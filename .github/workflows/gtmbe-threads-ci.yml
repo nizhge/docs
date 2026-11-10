@@ -1,0 +1,20 @@
+name: GTMBE Threads QA
+on:
+  pull_request:
+    paths:
+      - 'gtmbe-threads-skills/**'
+      - '.github/workflows/gtmbe-threads-ci.yml'
+  workflow_dispatch:
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python gtmbe-threads-skills/scripts/validate_skillpack.py
+      - run: python -m unittest discover -s gtmbe-threads-skills/tests -v
+      - run: python gtmbe-threads-skills/scripts/run_daily.py --fixture gtmbe-threads-skills/tests/fixtures/sample_feed.xml --out /tmp/gtmbe-smoke

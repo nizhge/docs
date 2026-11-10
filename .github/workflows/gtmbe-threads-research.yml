@@ -1,0 +1,44 @@
+name: GTMBE Threads Daily Research (draft-only)
+on:
+  workflow_dispatch:
+  schedule:
+    # 08:23 Moscow, UTC+3 year-round.
+    - cron: '23 5 * * *'
+jobs:
+  gather:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Restore small dedupe state cache
+        uses: actions/cache/restore@v4
+        with:
+          path: gtmbe-threads-skills/local-state
+          key: gtmbe-threads-state-${{ github.run_id }}
+          restore-keys: |
+            gtmbe-threads-state-
+      - name: Collect public GTM sources and prepare draft-only artifacts
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: gpt-4.1-mini
+        run: |
+          python gtmbe-threads-skills/scripts/run_daily.py --out /tmp/gtmbe-threads-daily --state gtmbe-threads-skills/local-state/drafted.json
+      - name: Save non-sensitive dedupe state
+        uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: gtmbe-threads-skills/local-state
+          key: gtmbe-threads-state-${{ github.run_id }}
+      - name: Upload research briefs and review-required drafts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gtmbe-threads-draft-only-${{ github.run_id }}
+          path: /tmp/gtmbe-threads-daily/
+          if-no-files-found: warn
+          retention-days: 14

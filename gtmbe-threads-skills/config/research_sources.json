@@ -1,0 +1,10 @@
+[
+  {"name":"GTMnow","type":"rss","url":"https://gtmnow.com/feed/"},
+  {"name":"SaaStr","type":"rss","url":"https://www.saastr.com/feed/"},
+  {"name":"a16z","type":"rss","url":"https://a16z.com/feed/"},
+  {"name":"Lenny's Newsletter","type":"rss","url":"https://www.lennysnewsletter.com/feed"},
+  {"name":"First Round Review","type":"rss","url":"https://review.firstround.com/feed"},
+  {"name":"Andrey Shishkin B2B","type":"telegram","url":"https://t.me/s/andrew_shishkin"},
+  {"name":"proVenture","type":"telegram","url":"https://t.me/s/proventure"},
+  {"name":"Meo B2B marketing","type":"telegram","url":"https://t.me/s/Meo_marketing"}
+]

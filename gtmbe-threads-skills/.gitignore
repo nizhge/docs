@@ -1,0 +1,17 @@
+.env
+.env.*
+!.env.example
+*.token
+*.key
+secrets/
+private/
+user-data/
+artifacts/
+data/
+local-state/
+__pycache__/
+
+config/settings.local.yaml
+config/owner_sources.local.yaml
+voice_profile.md
+story_bank.md

@@ -1,0 +1,6 @@
+# Local-only configuration template. Copy to owner_sources.local.yaml (gitignored).
+owner_telegram_url: null
+owner_threads_url: null
+notion_project_url: null
+notion_notes_url: null
+# Put access tokens in a secret store, not in this file.

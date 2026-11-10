@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"><channel><title>Fixture only, not a real feed</title>
+<item><title>Founder-led sales tests and pricing experiments</title><link>https://example.com/articles/founder-led-sales-tests</link><description>A hypothetical startup founder compares customer interviews and early pricing experiments before launching a B2B SaaS product.</description><pubDate>Tue, 10 Nov 2026 06:00:00 GMT</pubDate></item>
+<item><title>Go-to-market launch sequence for a SaaS product</title><link>https://example.com/articles/gtm-launch</link><description>Sample text about a launch checklist and a customer discovery process. For parser tests only.</description><pubDate>Tue, 10 Nov 2026 07:00:00 GMT</pubDate></item>
+</channel></rss>

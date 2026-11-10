@@ -1,0 +1,32 @@
+{
+  "content_id": "GTMBE-20261110-0001",
+  "origin": "owner|external",
+  "source_ids": [],
+  "source_urls": [],
+  "topic": "",
+  "original_contribution": "",
+  "claims": [
+    {
+      "claim": "",
+      "evidence_url": "",
+      "verification_status": "needs_verification"
+    }
+  ],
+  "voice_version": "v0-provisional",
+  "text": "",
+  "character_count": 0,
+  "quality_score": null,
+  "duplicate_check": "not_checked",
+  "account_url": null,
+  "approval_state": "not_requested",
+  "workflow_status": "DRAFT",
+  "scheduled_at": null,
+  "published_at": null,
+  "provider_post_id": null,
+  "live_url": null,
+  "analytics_as_of": null,
+  "performance": {},
+  "lead_attribution": null,
+  "last_error": null,
+  "next_action": "review"
+}

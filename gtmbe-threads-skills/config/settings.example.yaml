@@ -1,0 +1,31 @@
+# GTMBE Threads | skill configuration examples; executable pipeline reads research_sources.json and env vars
+project: GTMBE
+brand_rebrand_to_focus_approved: false
+language: ru
+research_languages: [ru, en]
+timezone: Europe/Moscow
+telegram_owner_channel: null # confirm actual URL; do not guess
+threads_profile_url: null # confirm the exact intended account
+content_account_type: founder # founder or brand, owner confirmation required
+publication:
+  mode: DRAFT_ONLY # DRAFT_ONLY, APPROVAL_REQUIRED, AUTO_APPROVED
+  provider: null # optional: publora, meta_graph_api, metricool if actually connected
+  auto_publish_scope_approved: false
+  third_party_auto_replies: false
+  max_live_posts_per_day: 2
+  require_receipt: true
+research:
+  target_owner_style_samples: 30
+  max_owner_style_samples: 100
+  target_external_telegram_channels: 20
+  target_topic_ideas_per_day: 15
+  target_drafts_per_day: 4
+  quality_threshold: 80
+  human_review_first_batch: true
+analytics:
+  account_metrics_only_if_connected: true
+  primary_kpi: qualified_inbound_leads
+  weekly_review: true
+memory:
+  reuse_canonical_notion_records: true
+  keep_secrets_out_of_workspace: true

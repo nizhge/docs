@@ -1,0 +1,22 @@
+id,category,name,url,priority,verification_status,notes
+OWN_TG,owner,GTMBE owner Telegram,UNKNOWN,high,needs_owner_confirmation,Do not assume handle or public access
+OWN_NOTION,owner,GTMBE Notion project,,high,needs_owner_confirmation,Provide actual private URL only in local configuration
+OWN_WEB,owner,GTMBE website,https://gtmbe.com/ru,high,link_known,Website case figures may be outdated
+VC_FR,vc,First Round Review,https://review.firstround.com,high,candidate,Verify article and date
+VC_A16Z,vc,a16z,https://a16z.com/category/growth/sales-and-go-to-market/,high,candidate,Verify article and date
+VC_BVP,vc,Bessemer Atlas,https://www.bvp.com/atlas,high,candidate,Verify article and date
+VC_YC,vc,YC Library,https://www.ycombinator.com/library,high,candidate,Verify article and date
+VC_NFX,vc,NFX,https://www.nfx.com,medium,candidate,Verify article and date
+VC_GREY,vc,Greylock,https://greylock.com,medium,candidate,Verify article and date
+VC_SEQ,vc,Sequoia Capital,https://sequoiacap.com,medium,candidate,Verify article and date
+GTM_NOW,gtm,GTMnow,https://gtmnow.com,high,candidate,Verify article and date
+GTM_LENNY,gtm,Lenny's Newsletter,https://www.lennysnewsletter.com,high,candidate,Respect paywalls
+GTM_SAASTR,gtm,SaaStr,https://www.saastr.com,high,candidate,Verify article and date
+GTM_DEMAND,gtm,Demand Curve,https://www.demandcurve.com,medium,candidate,Verify article and date
+GTM_REFORGE,gtm,Reforge,https://www.reforge.com,medium,candidate,Respect paywalls
+GTM_PRODUCTLED,gtm,ProductLed,https://www.productled.com,medium,candidate,Verify article and date
+TG_B2B,telegram_public,Андрей Шишкин про B2B лидген,https://t.me/s/andrew_shishkin,high,candidate,Verify freshness and suitability
+TG_VENTURE,telegram_public,proVenture,https://t.me/s/proventure,medium,candidate,Verify freshness and suitability
+TG_MEO,telegram_public,Мео Маркетинг в B2B,https://t.me/s/Meo_marketing,medium,candidate,Verify freshness and suitability
+TG_KYR,telegram_public,kyrillic,https://t.me/s/kyrillic,medium,candidate,Verify freshness and suitability
+TG_B2BJ,telegram_public,B2B Journal,https://t.me/s/b2bjournal,medium,candidate,Verify freshness and suitability

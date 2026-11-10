@@ -87,3 +87,35 @@ This standalone version adds `scripts/validate_skillpack.py` and a GitHub Action
 ## License / credits
 
 See [ATTRIBUTION.md](ATTRIBUTION.md) and [LICENSE](LICENSE). Inspired by Sergey Bulaev's MIT-licensed [`threads-skills`](https://github.com/sergebulaev/threads-skills); 13 independent GTMBE-specific instructions, not an official fork or endorsement.
+
+## Executable research pipeline (added 2026-11-10)
+
+The portable pack now includes a **working, standard-library Python prototype** in `scripts/engine.py`, `scripts/run_daily.py`, and `scripts/publish_threads.py`. This is separate from the 13 text skills above.
+
+### Local quickstart
+
+```bash
+python -m unittest discover -s tests -v
+python scripts/validate_skillpack.py
+python scripts/run_daily.py --fixture tests/fixtures/sample_feed.xml --out artifacts/offline-test
+python scripts/run_daily.py --out artifacts/latest
+```
+
+`run_daily.py` reads `config/research_sources.json`: public RSS feeds and public Telegram channel preview pages, ranks relevant posts, deduplicates, and writes `candidates.json`, `briefs.json`, `drafts.json`, `report.json`, `report.md`. Failed sources are reported, not treated as successful. All output remains **DRAFT_ONLY**. This command never publishes anything.
+
+If `OPENAI_API_KEY` is configured in the runner's secrets, the engine can also generate up to three 500-character, evidence-bounded Russian Threads draft candidates using `OPENAI_MODEL` (default `gpt-4.1-mini`). With no API key, it produces research briefs, not fabricated AI posts. A *verified* writing-style profile can optionally be supplied through `GTMBE_VOICE_PROFILE_PATH` (a local private file). An operator-confirmed public owner channel can optionally be supplied as `GTMBE_OWNER_TELEGRAM_URL`, e.g. `https://t.me/s/your_confirmed_public_channel`. Do not guess ownership. The repo contains neither keys nor personal Telegram exports.
+
+### GitHub Actions
+
+When embedded in `nizhge/docs`, use the workflows under `github_workflows_for_repo_root/` as **root** `.github/workflows/gtmbe-threads-ci.yml` and `.github/workflows/gtmbe-threads-research.yml`. The latter only produces review artifacts and can run daily at **08:23 Europe/Moscow**, but schedules require the workflow to exist on the repository's **default branch**. A branch-only implementation does not run on a daily schedule. Artifacts expire after 14 days; dedupe state uses a small Actions cache (not a permanent database). Source availability is best effort, and browser-only/private/paywalled sources are not accessed.
+
+### Publishing (separately approved, never by the daily workflow)
+
+`python scripts/publish_threads.py --drafts artifacts/latest/drafts.json --id draft_... --approval private/approved_sha256.json` validates the exact text hash in a private approval map and **dry-runs** only. For live mode, the operator must additionally provide `--publish`, `ENABLE_LIVE_THREADS=1`, `THREADS_USER_ID`, and `THREADS_ACCESS_TOKEN` from an authorized Meta Threads OAuth flow. These credentials must not be committed. The adapter records `ATTEMPT_STARTED` / `CONTAINER_CREATED` / `API_CONFIRMED`; unknown outcomes are marked for manual reconciliation, never automatically retried. No blanket consent to post is inferred.
+
+### Limits
+
+- Source snippets are not full article fact checks; all generated drafts require editorial review. The scores are relevance triage, not verified truth scores.
+- The system does not currently read a personal Notion workspace or a private Telegram channel without additional authorized connectors.
+- No Threads profile analytics or live account is connected, and no Threads posts have been published by this code.
+- RSS and public Telegram HTML endpoints can change or block access; failures are surfaced.

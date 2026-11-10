@@ -1,4 +1,4 @@
-# GTMBE Threads | examples, not a working API integration
+# GTMBE Threads | skill configuration examples; executable pipeline reads research_sources.json and env vars
 project: GTMBE
 brand_rebrand_to_focus_approved: false
 language: ru

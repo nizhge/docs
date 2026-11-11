@@ -33,6 +33,10 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_MODEL: gpt-4.1-mini
+          # Owner previously identified @gtmbe as their author channel, distinct from personal @geni_al.
+          # Public Telegram preview might still be inaccessible; failure is logged, not treated as success.
+          GTMBE_OWNER_TELEGRAM_URL: https://t.me/s/gtmbe
+          GTMBE_OWNER_TELEGRAM_CONFIRMED: '1'
         run: |
           python gtmbe-threads-skills/scripts/run_daily.py --out /tmp/gtmbe-threads-daily --state gtmbe-threads-skills/local-state/drafted.json
       - name: Save non-sensitive dedupe state

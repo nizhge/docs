@@ -1,5 +1,7 @@
 # GTMBE → Threads | Customized Agent Skills Pack
 
+> **Current operating priority (2026-11-11): TELEGRAM_FIRST v1.** The scheduled automation now selects public Telegram posts only (and owner-owned posts once ownership is confirmed). The [master prompt](MASTER_AUTOMATION_PROMPT.md) is authoritative. VC/blog/newsletter research and novel market-essay generation below describe **future capabilities, not the current operating plan**. Own posts are minimally edited; external posts are never near-copied without rights. Live Threads publishing is disabled until approval and integration.
+
 Independent GTMBE adaptation inspired by [sergebulaev/threads-skills](https://github.com/sergebulaev/threads-skills) (MIT). Based on its eight specialized tasks, with five added GTMBE workflows. This is **not** a modified upstream GitHub repository, production deployment, or connected social account. No posts were published.
 
 ## Purpose

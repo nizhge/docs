@@ -53,7 +53,7 @@ class ResearchTests(unittest.TestCase):
 
     def test_owner_telegram_keeps_original_wording(self):
         original = "У стартапа может быть красивый продукт, но без понятного покупателя GTM не полетит. Как считаете?"
-        base = {"category": "telegram", "title": original[:120], "summary": original}
+        base = {"category": "telegram", "title": original[:120], "summary": original, "url": "https://t.me/example/123"}
         owned = dict(base, source="owner Telegram (operator supplied)")
         external = dict(base, source="external channel")
         self.assertTrue(is_owned_telegram(owned))

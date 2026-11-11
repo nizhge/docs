@@ -113,7 +113,7 @@ When embedded in `nizhge/docs`, use the workflows under `github_workflows_for_re
 
 ### Publishing (separately approved, never by the daily workflow)
 
-`python scripts/publish_threads.py --drafts artifacts/latest/drafts.json --id draft_... --approval private/approved_sha256.json` validates the exact text hash in a private approval map and **dry-runs** only. For live mode, the operator must additionally provide `--publish`, `ENABLE_LIVE_THREADS=1`, `THREADS_USER_ID`, and `THREADS_ACCESS_TOKEN` from an authorized Meta Threads OAuth flow. These credentials must not be committed. The adapter records `ATTEMPT_STARTED` / `CONTAINER_CREATED` / `API_CONFIRMED`; unknown outcomes are marked for manual reconciliation, never automatically retried. No blanket consent to post is inferred.
+`python scripts/publish_threads.py --drafts artifacts/latest/drafts.json --id draft_... --approval private/approved_sha256.json` validates the exact text hash in a private approval map and **dry-runs** only. For live mode, the operator must additionally provide `--publish`, `ENABLE_LIVE_THREADS=1`, `THREADS_USER_ID`, and `THREADS_ACCESS_TOKEN` from an authorized Meta Threads OAuth flow. These credentials must not be committed. The adapter records `ATTEMPT_STARTED` / `CONTAINER_CREATED` / `API_CONFIRMED_LINK_PENDING`, then reads back the real permalink and exact text. Only `PUBLISHED_VERIFIED` with a Threads permalink counts as published. A missing or uncertain readback remains `API_CONFIRMED_LINK_UNVERIFIED` and must be reconciled manually; it is never republished blindly. No blanket consent to post is inferred.
 
 ### Limits
 
@@ -121,3 +121,11 @@ When embedded in `nizhge/docs`, use the workflows under `github_workflows_for_re
 - The system does not currently read a personal Notion workspace or a private Telegram channel without additional authorized connectors.
 - No Threads profile analytics or live account is connected, and no Threads posts have been published by this code.
 - RSS and public Telegram HTML endpoints can change or block access; failures are surfaced.
+
+## Live Telegram-first verification (2026-11-11)
+
+- Source priority is now owner-authored Telegram content first; the user previously identified [@gtmbe](https://t.me/gtmbe) as their author channel. The public preview was successfully read by [GitHub Actions run 43032494986](https://github.com/nizhge/docs/actions/runs/43032494986). This is distinct from their contact @geni_al.
+- Six selected external public Telegram channels also fetched successfully in the same run. Run result: 7 sources attempted, 61 candidates, 13 excluded, 28 editorially eligible, 10 research briefs, 0 generated drafts and **0 live publications**. Source dates and forwarded status are parsed where available.
+- Editorial filtering rejects some job listings, event promotions, sponsored launches and forwards. Human selection is still necessary; not every message is suitable for Threads.
+- The workflow has no `OPENAI_API_KEY` configured, so GitHub Actions does not automatically generate posts. ChatGPT may prepare drafts in the canonical [Notion content queue](https://app.notion.com/p/414676b318368056a54fd513fd11f0a2), but that is a separate workflow.
+- The GitHub publisher has tests for exact approved text and a real Threads permalink. No authorized Threads profile/token has been provided, so it has **not** been tested against a live Meta account. The repo is not a live posting service yet.

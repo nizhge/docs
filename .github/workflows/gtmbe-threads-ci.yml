@@ -1,5 +1,10 @@
 name: GTMBE Threads QA
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'gtmbe-threads-skills/**'
+      - '.github/workflows/gtmbe-threads-ci.yml'
   pull_request:
     paths:
       - 'gtmbe-threads-skills/**'

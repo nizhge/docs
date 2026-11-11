@@ -6,7 +6,7 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 
-from engine import candidates_from_sources, generate_draft, load_sources, write_json
+from engine import candidates_from_sources, generate_draft, load_sources, write_json, exclusion_reason
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -36,7 +36,11 @@ def main() -> int:
         except (ValueError, OSError):
             pass
     used = set(state.get("drafted_ids", []))
-    fresh = [x for x in candidates if x["id"] not in used and x["relevance_score"] >= 37]
+    excluded = [{"id": x["id"], "source": x["source"], "url": x["url"], "reason": reason}
+                for x in candidates if (reason := exclusion_reason(x))]
+    excluded_ids = {x["id"] for x in excluded}
+    fresh = [x for x in candidates if x["id"] not in used and x["id"] not in excluded_ids
+             and x["relevance_score"] >= 37]
     api_key = os.getenv("OPENAI_API_KEY", "").strip()
     model = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
     voice_path = Path(os.getenv("GTMBE_VOICE_PROFILE_PATH", ROOT / "private" / "voice_profile.md"))
@@ -56,15 +60,17 @@ def main() -> int:
     output = args.out
     output.mkdir(parents=True, exist_ok=True)
     write_json(output / "candidates.json", candidates)
+    write_json(output / "excluded.json", excluded)
     write_json(output / "briefs.json", briefs)
     write_json(output / "drafts.json", drafts)
     report = {"run_at": run_at, "mode": "OFFLINE_TEST" if is_fixture else "DRAFT_ONLY", "sources_attempted": len(sources),
-              "candidates_found": len(candidates), "research_briefs": len(briefs), "review_required_drafts": len(drafts),
+              "candidates_found": len(candidates), "candidates_eligible": len(fresh), "excluded_posts": len(excluded),
+              "research_briefs": len(briefs), "review_required_drafts": len(drafts),
               "posts_published": 0, "voice_verified": bool(voice.strip()), "model_enabled": bool(api_key) and not is_fixture,
               "source_errors": errors, "generation_errors": generation_errors}
     write_json(output / "report.json", report)
     report_text = f"# GTMBE Threads daily research\n\nRun: {run_at}\nMode: {report['mode']}\n\n"
-    report_text += f"Sources attempted: {len(sources)}; candidates: {len(candidates)}; briefs: {len(briefs)}; drafts needing review: {len(drafts)}; **published: 0**.\n\n"
+    report_text += f"Sources attempted: {len(sources)}; candidates: {len(candidates)}; editorially excluded: {len(excluded)}; eligible: {len(fresh)}; briefs: {len(briefs)}; drafts needing review: {len(drafts)}; **published: 0**.\n\n"
     if not api_key:
         report_text += "No OPENAI_API_KEY: collected research briefs only; did not fabricate draft posts.\n\n"
     if not voice.strip():

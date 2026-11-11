@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 from engine import (parse_rss, parse_telegram, candidates_from_sources, canonical_url,
-                    validate_draft, item_id, load_sources, clean_text, is_owned_telegram, draft_prompt)
+                    validate_draft, item_id, load_sources, clean_text, is_owned_telegram, draft_prompt, exclusion_reason)
 from publish_threads import fetch_approved, publish
 
 
@@ -61,6 +61,32 @@ class ResearchTests(unittest.TestCase):
         self.assertIn("Too close", validate_draft(original, external))
         self.assertIn("light-touch", draft_prompt(owned)[0]["content"])
         self.assertIn("third-party", draft_prompt(external)[0]["content"])
+
+    def test_telegram_date_and_forwarded_metadata(self):
+        html = ('<div class="tgme_widget_message" data-post="agency/87">'
+                '<div class="tgme_widget_message_text js-message_text">Что выгоднее: расширять команду продаж или повышать конверсию? Без понимания цикла покупки рост штата может оказаться пустой тратой бюджета, поэтому сначала полезно измерить этапы воронки.</div>'
+                '<time datetime="2026-11-10T08:30:00+00:00">10:30</time>'
+                '</div>')
+        item = parse_telegram(html, "Agency")[0]
+        self.assertTrue(item["published_at"].startswith("2026-11-10"))
+        self.assertFalse(item["is_forwarded"])
+        self.assertIsNone(exclusion_reason(item))
+
+    def test_editorial_gate_excludes_promotions_not_ideas(self):
+        marketing = ("✅ Поддержите запуск Naoma AI на Product Hunt! Сегодня проходит лонч, "
+                     "переходите по ссылке, проголосуйте и помогите нам в рейтинге. "
+                     "Мы будем рады вашей поддержке и комментариям.")
+        html = (f'<div class="tgme_widget_message" data-post="channel/44">'
+                f'<div class="tgme_widget_message_text">{marketing}</div></div>')
+        promo = parse_telegram(html, "Channel")[0]
+        self.assertEqual(exclusion_reason(promo), "promotion_event_or_job_listing")
+        useful = ("У B2B-компании часто проблема не в количестве лидов, а в том, что менеджеры "
+                  "поздно отвечают на заявки. Сначала стоит проверить время ответа, причины "
+                  "потери интереса и долю доведённых до разговора запросов.")
+        good = parse_telegram(
+            '<div class="tgme_widget_message" data-post="channel/45">'
+            '<div class="tgme_widget_message_text">' + useful + '</div></div>', "Channel")[0]
+        self.assertIsNone(exclusion_reason(good))
 
     def test_source_registry_telegram_first(self):
         sources = load_sources(ROOT / "config/research_sources.json")

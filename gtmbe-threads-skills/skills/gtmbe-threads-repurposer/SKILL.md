@@ -11,6 +11,9 @@ An authenticated owner-owned post, talk excerpt, permitted project note or own p
 ## Critical source rule
 Repurpose ONLY the owner's content or content licensed/authorized for transformation. For third-party Telegram/VC/newsletter content, do original synthesis with `gtmbe-source-researcher` + `gtmbe-evidence-checker` + `gtmbe-threads-post-writer`; never use a tone rewriter to disguise copied work.
 
+## Telegram-first v1 override
+For confirmed owner-authored Telegram content, preserve almost all of the language and underlying structure. If under 500 characters, keep edits to minimal platform-specific cleanup and a natural CTA. If long, trim tangents instead of inventing new founder opinions. Similarity to the owner's own source text is expected and allowed. Third-party text is not subject to this exception: never near-copy without republication permission.
+
 ## Workflow
 1. Preserve original permalink, author, date, copyright/access status.
 2. Extract one key claim or observed lesson and what GTMBE can add now; split multiple ideas into separate drafts.

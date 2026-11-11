@@ -2,7 +2,7 @@
 project: GTMBE
 brand_rebrand_to_focus_approved: false
 language: ru
-research_languages: [ru, en]
+research_languages: [ru] # Telegram-first v1; re-enable multilingual research in phase 2
 timezone: Europe/Moscow
 telegram_owner_channel: null # confirm actual URL; do not guess
 threads_profile_url: null # confirm the exact intended account
@@ -15,11 +15,14 @@ publication:
   max_live_posts_per_day: 2
   require_receipt: true
 research:
+  primary_source: telegram
+  other_research_sources_enabled: false # defer VC, blogs, newsletters
+  minimal_edit_for_owned_content: true
   target_owner_style_samples: 30
   max_owner_style_samples: 100
-  target_external_telegram_channels: 20
-  target_topic_ideas_per_day: 15
-  target_drafts_per_day: 4
+  target_external_telegram_channels: 6
+  target_topic_ideas_per_day: 5
+  target_drafts_per_day: 3
   quality_threshold: 80
   human_review_first_batch: true
 analytics:

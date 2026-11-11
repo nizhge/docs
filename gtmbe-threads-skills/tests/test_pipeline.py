@@ -121,12 +121,33 @@ class PublisherTests(unittest.TestCase):
                 calls.append(url)
                 return {"id": "12345" if len(calls) == 1 else "67890"}
             receipts = Path(tmp) / "receipts.json"
-            res = publish(post, receipts, "123", "test", poster=fake_post)
-            self.assertEqual(res["status"], "API_CONFIRMED")
+            def fake_read(post_id, token):
+                return {"id": post_id, "permalink": "https://www.threads.com/@example/post/abc123",
+                        "text": post["text"]}
+            res = publish(post, receipts, "123", "test", poster=fake_post, reader=fake_read)
+            self.assertEqual(res["status"], "PUBLISHED_VERIFIED")
+            self.assertTrue(res["permalink"].startswith("https://www.threads.com/"))
             self.assertEqual(len(calls), 2)
             with self.assertRaises(ValueError):
                 publish(post, receipts, "123", "test", poster=fake_post)
             self.assertEqual(len(calls), 2)
+
+    def test_unverified_permalink_is_not_falsely_marked_published(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            receipts = Path(tmp) / "receipts.json"
+            post = {"id": "draft_link_missing", "text": "Контент для проверки API. А вы как считаете?"}
+            ids = iter(("container123", "post456"))
+            def fake_post(url, form, token):
+                return {"id": next(ids)}
+            def unavailable_readback(post_id, token):
+                raise TimeoutError("No permalink response yet")
+            result = publish(post, receipts, "123", "token", poster=fake_post,
+                             reader=unavailable_readback)
+            self.assertEqual(result["status"], "API_CONFIRMED_LINK_UNVERIFIED")
+            self.assertNotIn("permalink", result)
+            with self.assertRaises(ValueError):
+                publish(post, receipts, "123", "token", poster=fake_post,
+                        reader=unavailable_readback)
 
     def test_uncertain_publish_is_blocked_on_retry(self):
         with tempfile.TemporaryDirectory() as tmp:

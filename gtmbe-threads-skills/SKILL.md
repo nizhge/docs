@@ -4,6 +4,8 @@ description: "Orchestrate a founder-led, evidence-backed GTMBE Threads content w
 ---
 # GTMBE Threads Engine
 
+**Current v1 operating mode: TELEGRAM_FIRST / DRAFT_ONLY.** Read `MASTER_AUTOMATION_PROMPT.md` first. Prioritize already-written, owner-owned Telegram text with minimal editing; use public third-party channels only for attributed, independently original commentary when reuse rights are absent. VC/blog/newsletter research is deferred. Never publish without a verified integration and account-specific permission.
+
 Use when asked for GTMBE Threads ideas, writing, editorial planning, Telegram-to-Threads repurposing, VC/GTM topic research, voice calibration, profile improvement, commentary, analytics, or scheduled publication.
 
 1. Load `config/settings.example.yaml` and the current verified Voice Profile and Story Bank when available. Treat templates as unfilled.

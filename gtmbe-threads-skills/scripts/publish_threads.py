@@ -10,7 +10,7 @@ from hashlib import sha256
 import json
 import os
 from pathlib import Path
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 from urllib.request import Request, urlopen
 
 BASE = "https://graph.threads.net/v1.0"
@@ -48,7 +48,16 @@ def _post(url: str, args: dict, token: str, timeout: int = 25) -> dict:
         return json.loads(response.read(150_000))
 
 
-def publish(draft: dict, receipts_file: Path, user_id: str, token: str, poster=_post) -> dict:
+def _read_post(post_id: str, token: str, timeout: int = 25) -> dict:
+    """Read back a published Threads media object to confirm real permalink and text."""
+    url = f"{BASE}/{post_id}?fields=id,permalink,text"
+    request = Request(url, headers={"Authorization": f"Bearer {token}"}, method="GET")
+    with urlopen(request, timeout=timeout) as response:
+        return json.loads(response.read(150_000))
+
+
+def publish(draft: dict, receipts_file: Path, user_id: str, token: str,
+            poster=_post, reader=_read_post) -> dict:
     if not user_id.isdigit():
         raise ValueError("THREADS_USER_ID must be numeric")
     if not token:
@@ -67,8 +76,25 @@ def publish(draft: dict, receipts_file: Path, user_id: str, token: str, poster=_
         write_atomic(receipts_file, receipts)
         result = poster(f"{BASE}/{user_id}/threads_publish", {"creation_id": container_id}, token)
         media_id = result["id"]
-        receipts[draft_id] = {"status": "API_CONFIRMED", "container_id": container_id,
+        receipts[draft_id] = {"status": "API_CONFIRMED_LINK_PENDING", "container_id": container_id,
                               "post_id": media_id, "at": datetime.now(timezone.utc).isoformat()}
+        write_atomic(receipts_file, receipts)
+        try:
+            post = reader(str(media_id), token)
+            permalink = str(post.get("permalink") or "").strip()
+            host = urlparse(permalink).hostname
+            if str(post.get("id")) != str(media_id):
+                raise ValueError("Readback media ID mismatch")
+            if host not in {"threads.com", "www.threads.com", "threads.net", "www.threads.net"}:
+                raise ValueError("No verified Threads permalink")
+            if post.get("text") is not None and post["text"].strip() != draft["text"].strip():
+                raise ValueError("Readback text differs from approved draft")
+            receipts[draft_id]["status"] = "PUBLISHED_VERIFIED"
+            receipts[draft_id]["permalink"] = permalink
+        except Exception as readback_error:
+            # The API may already have posted. Never retry publication here.
+            receipts[draft_id]["status"] = "API_CONFIRMED_LINK_UNVERIFIED"
+            receipts[draft_id]["readback_error_type"] = type(readback_error).__name__
         write_atomic(receipts_file, receipts)
         return receipts[draft_id]
     except Exception as exc:

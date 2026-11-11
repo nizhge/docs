@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 from engine import (parse_rss, parse_telegram, candidates_from_sources, canonical_url,
-                    validate_draft, item_id, load_sources, clean_text)
+                    validate_draft, item_id, load_sources, clean_text, is_owned_telegram, draft_prompt)
 from publish_threads import fetch_approved, publish
 
 
@@ -50,6 +50,22 @@ class ResearchTests(unittest.TestCase):
     def test_requires_soft_cta(self):
         self.assertIn("CTA", validate_draft("Сначала проверяйте спрос, потом масштабируйте маркетинг и продажи.", self.item))
         self.assertIsNone(validate_draft("Вместо долгих GTM-презентаций я бы начинал с разговоров с покупателями. А вы как считаете?", self.item))
+
+    def test_owner_telegram_keeps_original_wording(self):
+        original = "У стартапа может быть красивый продукт, но без понятного покупателя GTM не полетит. Как считаете?"
+        base = {"category": "telegram", "title": original[:120], "summary": original}
+        owned = dict(base, source="owner Telegram (operator supplied)")
+        external = dict(base, source="external channel")
+        self.assertTrue(is_owned_telegram(owned))
+        self.assertIsNone(validate_draft(original, owned))
+        self.assertIn("Too close", validate_draft(original, external))
+        self.assertIn("light-touch", draft_prompt(owned)[0]["content"])
+        self.assertIn("third-party", draft_prompt(external)[0]["content"])
+
+    def test_source_registry_telegram_first(self):
+        sources = load_sources(ROOT / "config/research_sources.json")
+        self.assertTrue(sources)
+        self.assertTrue(all(src["type"] == "telegram" for src in sources))
 
     def test_source_registry_has_only_https(self):
         sources = load_sources(ROOT / "config/research_sources.json")

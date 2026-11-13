@@ -115,10 +115,12 @@ def get_json(endpoint: str, token: str, timeout=25) -> dict:
 
 
 def verify_identity(token: str, expected_user_id: str, expected_username: str, getter=get_json) -> dict:
-    if not expected_user_id.isdigit() or not expected_username.strip():
-        raise ValueError("THREADS_USER_ID and THREADS_USERNAME are required.")
+    if (expected_user_id and not expected_user_id.isdigit()) or not expected_username.strip():
+        raise ValueError("Invalid optional THREADS_USER_ID or missing THREADS_USERNAME.")
     data = getter(f"{BASE}/me?fields=id,username", token)
-    if str(data.get("id")) != str(expected_user_id):
+    if not str(data.get("id", "")).isdigit():
+        raise ValueError("Threads /me did not return a valid account ID.")
+    if expected_user_id and str(data.get("id")) != str(expected_user_id):
         raise ValueError("Threads token belongs to a different user ID. Refusing to publish.")
     if str(data.get("username", "")).casefold().lstrip("@") != expected_username.casefold().lstrip("@"):
         raise ValueError("Threads username does not match the approved account. Refusing to publish.")
@@ -178,7 +180,7 @@ def do_run(html: str, state_path: Path, live: bool, *, token="", user_id="",
     save_state(state_path, state, committer)
     draft = {"id": "owner_" + chosen["source_post_id"], "text": chosen["text"]}
     try:
-        receipt = sender(draft, ROOT / "local-state" / "api_receipts.json", user_id, token)
+        receipt = sender(draft, ROOT / "local-state" / "api_receipts.json", verified["id"], token)
         state["entries"][key] = {"status": receipt.get("status", "UNKNOWN"),
                                  "text_sha256": chosen["text_sha256"], "post_id": receipt.get("post_id"),
                                  "permalink": receipt.get("permalink"), "at": timestamp}

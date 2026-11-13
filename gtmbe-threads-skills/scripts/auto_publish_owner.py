@@ -149,7 +149,7 @@ def load_review_queue(path: Path | None) -> tuple[list[dict], int]:
     approved, pending = [], 0
     for item in payload["items"]:
         if item.get("ownership") != "OWNER" or not re.fullmatch(
-                r"https://t\\.me/gtmbe/\\d+", str(item.get("source_url", ""))):
+                r"https://t\.me/gtmbe/\d+", str(item.get("source_url", ""))):
             raise ValueError("Queue includes a non-owner or malformed source URL")
         if item.get("status") != "APPROVED" or item.get("approved_by_owner") is not True:
             pending += 1

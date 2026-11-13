@@ -9,7 +9,7 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 from auto_publish_owner import (
-    select_eligible, do_run, load_state, verify_identity, text_digest
+    select_eligible, do_run, load_state, verify_identity, text_digest, load_review_queue
 )
 
 
@@ -49,6 +49,41 @@ class AutoOwnerTests(unittest.TestCase):
         self.assertEqual([x["source_post_id"] for x in selected], ["300"])
         self.assertEqual(selected[0]["text"], self.owned_text)
         self.assertEqual(selected[0]["text_sha256"], text_digest(self.owned_text))
+
+    def test_review_queue_requires_explicit_exact_approval(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "queue.json"
+            record = {"ownership": "OWNER", "source_url": "https://t.me/gtmbe/186",
+                      "status": "REVIEW_REQUIRED", "approved_by_owner": False,
+                      "text": self.owned_text, "text_sha256": text_digest(self.owned_text)}
+            path.write_text(json.dumps({"items": [record]}), encoding="utf-8")
+            approved, pending = load_review_queue(path)
+            self.assertEqual(len(approved), 0)
+            self.assertEqual(pending, 1)
+            record.update({"status": "APPROVED", "approved_by_owner": True})
+            path.write_text(json.dumps({"items": [record]}), encoding="utf-8")
+            approved, pending = load_review_queue(path)
+            self.assertEqual(len(approved), 1)
+            self.assertEqual(approved[0]["origin"], "OWNER_EDIT_APPROVED")
+            self.assertEqual(pending, 0)
+            record["text_sha256"] = "tampered"
+            path.write_text(json.dumps({"items": [record]}), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "digest"):
+                load_review_queue(path)
+
+    def test_approved_owner_edit_is_selected_before_verbatim_source(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            queue = Path(tmp) / "queue.json"
+            rec = {"ownership": "OWNER", "source_url": "https://t.me/gtmbe/186",
+                   "source_date": "2026-11-02", "status": "APPROVED",
+                   "approved_by_owner": True, "text": self.owned_text,
+                   "text_sha256": text_digest(self.owned_text)}
+            queue.write_text(json.dumps({"items": [rec]}), encoding="utf-8")
+            result = do_run(self.html, Path(tmp) / "ledger.json", False,
+                            queue_path=queue, today=self.today)
+            self.assertEqual(result["status"], "PREVIEW_ONLY")
+            self.assertEqual(result["selected"]["origin"], "OWNER_EDIT_APPROVED")
+            self.assertEqual(result["selected"]["source_url"], "https://t.me/gtmbe/186")
 
     def test_preview_is_non_mutating(self):
         with tempfile.TemporaryDirectory() as tmp:

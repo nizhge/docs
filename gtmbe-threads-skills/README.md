@@ -143,6 +143,8 @@ When embedded in `nizhge/docs`, use the workflows under `github_workflows_for_re
 
 Longer Telegram articles and posts failing these gates are NOT auto-reposted. They require editorial adaptation and explicit review; no third-party Telegram text is ever automatically republished.
 
+**Approved edited-post queue:** `queue/owner_reviews.json` contains two existing owner-sourced Threads adaptations with `status=REVIEW_REQUIRED` and `approved_by_owner=false`. They are intentionally **not live**. When the owner explicitly approves the exact final texts, the agent/operator can set each approved item to `status=APPROVED` and `approved_by_owner=true` without altering its `text_sha256`. If any text changes, the SHA-256 digest must be recalculated and the revised text separately approved. Approved edits take priority over automatic short posts, even if their original Telegram source is older than 7 days. The persistent ledger prevents posting a source twice.
+
 ### One-time authorization (do not paste tokens into chat or GitHub source files)
 
 1. In [Meta for Developers](https://developers.facebook.com/apps/), create or select an app with the **Threads API** use case. Add the actual Threads account as a tester/user if required, and grant `threads_basic` and `threads_content_publish`. Use the official [Meta Threads API Postman collection](https://www.postman.com/meta/threads/collection/dht3nzz/threads-api) to obtain a Threads user OAuth token; exchange it for a long-lived token before using an unattended workflow. Meta may require app review for accounts other than app testers.

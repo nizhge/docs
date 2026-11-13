@@ -129,3 +129,38 @@ When embedded in `nizhge/docs`, use the workflows under `github_workflows_for_re
 - Editorial filtering rejects some job listings, event promotions, sponsored launches and forwards. Human selection is still necessary; not every message is suitable for Threads.
 - The workflow has no `OPENAI_API_KEY` configured, so GitHub Actions does not automatically generate posts. ChatGPT may prepare drafts in the authorized private canonical Notion content queue (URL intentionally omitted from public repository), but that is a separate workflow.
 - The GitHub publisher has tests for exact approved text and a real Threads permalink. No authorized Threads profile/token has been provided, so it has **not** been tested against a live Meta account. The repo is not a live posting service yet.
+
+
+## Owner Telegram → Live Threads (new opt-in route, 13 Nov 2026)
+
+**Working preview:** [GTMBE Threads Owner Publishing workflow](https://github.com/nizhge/docs/actions/workflows/gtmbe-threads-owner-publish.yml). It fetches public `@gtmbe` messages directly, not external Telegram channels. The owner channel was already identified in the project. The first remote preview fetched 16 messages without credentials. It did **not** publish anything.
+
+**Safe default:** GitHub variable `GTMBE_AUTO_PUBLISH` is unset/false. Nothing is sent. Daily scheduled live publishing (09:47 Moscow) is activated only by the owner after authorizing the Threads account and setting the opt-in variable. Each run publishes at most ONE intact owner-written post, only if the post:
+- is from `https://t.me/gtmbe/<number>`, not forwarded, promotional or a job ad;
+- is recent (last 7 days), self-contained and already 120–500 characters;
+- has no embedded external links, @mentions or potentially time-sensitive numerical claims;
+- has not been attempted according to the durable repo ledger and does not already appear in the recent Threads feed.
+
+Longer Telegram articles and posts failing these gates are NOT auto-reposted. They require editorial adaptation and explicit review; no third-party Telegram text is ever automatically republished.
+
+### One-time authorization (do not paste tokens into chat or GitHub source files)
+
+1. In [Meta for Developers](https://developers.facebook.com/apps/), create or select an app with the **Threads API** use case. Add the actual Threads account as a tester/user if required, and grant `threads_basic` and `threads_content_publish`. Use the official [Meta Threads API Postman collection](https://www.postman.com/meta/threads/collection/dht3nzz/threads-api) to obtain a Threads user OAuth token; exchange it for a long-lived token before using an unattended workflow. Meta may require app review for accounts other than app testers.
+2. Open [GitHub Actions Secrets](https://github.com/nizhge/docs/settings/secrets/actions) and add `THREADS_ACCESS_TOKEN`. Optionally add `THREADS_USER_ID` if you want an additional fixed-ID check. Tokens must never be committed or written to Notion.
+3. Open [GitHub Actions Variables](https://github.com/nizhge/docs/settings/variables/actions) and set `THREADS_USERNAME` to the **exact authorized Threads handle** (without @). The script verifies that `/me` returns this handle before any POST request. Do not set `GTMBE_AUTO_PUBLISH` yet.
+4. Run the workflow manually with `action=preview`, inspect which original post it would select. If the text and account are correct and you explicitly authorize ongoing owner-source verbatim posting, set `GTMBE_AUTO_PUBLISH=true` in Actions Variables. Then run manually with `action=publish` to test one real post. After successful readback and receipt persistence, the daily schedule runs in the same gated mode.
+
+**Persistent ledger:** `gtmbe-threads-skills/state/owner_publications.json` is created only on the first live or already-existing reconciliation. Before the outbound POST, an `ATTEMPT_STARTED` marker is committed and pushed to GitHub. A failed/unknown API call keeps this marker and blocks automatic retries. A post is counted as published only after API success, a verified Threads permalink, and a second committed receipt. There is no blanket retry and no silent marking as published.
+
+**Important limitation:** A Meta Threads long-lived token has an expiry and must be kept valid/renewed (typically within ~60 days). Current GitHub Actions cannot update repository secrets automatically. Reauthorize/rotate the token as required; otherwise the automated posting stops. Adding a Meta token is a user-controlled authorization step; it is not handled by the ChatGPT GitHub connector.
+
+**Alternative:** Metricool can connect a Threads account and schedule posts through its own account connection flow, avoiding the need to build a Meta developer application. However it is not currently connected to this GitHub workflow.
+
+### Validation / test
+
+```bash
+python -m unittest discover -s gtmbe-threads-skills/tests -v
+python gtmbe-threads-skills/scripts/auto_publish_owner.py   # preview, no credentials, NEVER posts
+```
+
+The publisher stores only public post identifiers, text hashes, timestamps and public permalinks in git. It does not persist tokens or client content.

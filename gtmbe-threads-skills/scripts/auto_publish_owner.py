@@ -36,7 +36,7 @@ def text_digest(text: str) -> str:
     return sha256(" ".join(text.split()).encode("utf-8")).hexdigest()
 
 
-def select_eligible(html: str, today=None, max_age_days=21) -> list[dict]:
+def select_eligible(html: str, today=None, max_age_days=7) -> list[dict]:
     """Auto-publish only intact, fresh and standalone owner-written text <=500 chars.
 
     Longer posts, sensitive/quantitative claims, short throwaway messages,
@@ -57,7 +57,7 @@ def select_eligible(html: str, today=None, max_age_days=21) -> list[dict]:
         # Auto-mode cannot validate external links, images or specific numerical claims.
         if re.search(r"https?://|www\.|@[A-Za-z0-9_]{3,}|\b\d+(?:[.,]\d+)?\s*(?:%|к|млн|тыс|\$|руб|₽)", text, re.I):
             continue
-        if re.search(r"(?i)\b(?:сегодня|завтра|вчера|позавчера|на следующей неделе|подписывайтесь|инвайт|промокод)\b", text):
+        if re.search(r"(?i)\b(?:сегодня|завтра|вчера|позавчера|на следующей неделе|подписывайтесь|инвайт|промокод|последний месяц|безлимитного gpt|в прошлом месяце|до конца месяца|через неделю|спешите)\b", text):
             continue
         date_str = item.get("published_at")
         if not date_str:
@@ -140,7 +140,7 @@ def already_on_threads(text: str, token: str, getter=get_json) -> dict | None:
 
 
 def do_run(html: str, state_path: Path, live: bool, *, token="", user_id="",
-           username="", max_age_days=21, getter=get_json, sender=publish,
+           username="", max_age_days=7, getter=get_json, sender=publish,
            committer=None, today=None) -> dict:
     candidates = select_eligible(html, today=today, max_age_days=max_age_days)
     state = load_state(state_path)
@@ -198,7 +198,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--publish", action="store_true", help="Requires opt-in and Threads OAuth secrets")
     parser.add_argument("--state", type=Path, default=STATE_DEFAULT)
-    parser.add_argument("--max-age-days", type=int, default=21)
+    parser.add_argument("--max-age-days", type=int, default=7)
     parser.add_argument("--fixture", type=Path, help="Local HTML fixture (preview/tests only)")
     args = parser.parse_args()
     if args.publish and args.fixture:

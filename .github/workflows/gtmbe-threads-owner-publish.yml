@@ -1,6 +1,11 @@
 name: GTMBE Threads Owner Publishing (opt-in)
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/gtmbe-threads-owner-publish.yml'
+      - 'gtmbe-threads-skills/scripts/auto_publish_owner.py'
   workflow_dispatch:
     inputs:
       action:
@@ -46,6 +51,10 @@ jobs:
         run: |
           set -euo pipefail
           script="gtmbe-threads-skills/scripts/auto_publish_owner.py"
+          if [[ "$GH_EVENT_NAME" == "push" ]]; then
+            python "$script"
+            exit 0
+          fi
           if [[ "$GH_EVENT_NAME" == "workflow_dispatch" && "$GH_SELECTED_ACTION" == "preview" ]]; then
             python "$script"
             exit 0
@@ -55,8 +64,8 @@ jobs:
             python "$script"
             exit 0
           fi
-          if [[ -z "$THREADS_USERNAME" || -z "$THREADS_USER_ID" || -z "$THREADS_ACCESS_TOKEN" ]]; then
-            echo "::error::Threads credentials missing. Set THREADS_USERNAME (Actions variable) plus THREADS_USER_ID and THREADS_ACCESS_TOKEN (Actions secrets)."
+          if [[ -z "$THREADS_USERNAME" || -z "$THREADS_ACCESS_TOKEN" ]]; then
+            echo "::error::Threads credentials missing. Set THREADS_USERNAME (Actions variable) and THREADS_ACCESS_TOKEN (Actions secret)."
             exit 1
           fi
           python "$script" --publish

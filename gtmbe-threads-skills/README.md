@@ -4,6 +4,67 @@
 
 Independent GTMBE adaptation inspired by [sergebulaev/threads-skills](https://github.com/sergebulaev/threads-skills) (MIT). Based on its eight specialized tasks, with five added GTMBE workflows. This is **not** a modified upstream GitHub repository, production deployment, or connected social account. No posts were published.
 
+## Persistent Telegram → voice → Threads route
+
+`scripts/pipeline.py` joins source intake, the owner voice prompt, editorial drafts,
+account-specific approval, and the Meta publisher in one local SQLite queue. This
+route supports original commentary from external channels such as `@kyrillic` as
+well as minimally edited owner text. It does not activate the older owner-only
+GitHub publisher or claim an account is connected.
+
+```bash
+cd gtmbe-threads-skills
+python3 scripts/pipeline.py status
+python3 scripts/pipeline.py collect
+python3 scripts/pipeline.py --env-file private/connection.env generate --limit 3
+python3 scripts/pipeline.py export
+```
+
+The collector defaults to the previously confirmed owner channel `@gtmbe` plus
+the configured external sources. `private/voice_profile.json` must contain
+`status: CORPUS_REVIEWED` and at least eight distinct owner sample permalinks in
+`sample_urls`, plus the actual style instructions/examples. A smaller curated
+corpus may be provisional; profile presence does not imply owner approval. No
+third-party text belongs in that style corpus. The target remains 30–100 samples.
+
+Without a model key, collect sources and write drafts in an interactive agent
+session. Import a JSON array of drafts with `source_url`, `text`, `angle`,
+`original_contribution` and `verification_notes` using
+`import-drafts --file private/drafts.json`. Sources must already be collected.
+The new route refuses generic voice fallback. Draft generation always requires
+review; automatic tests and source snippets are not fact verification.
+
+Reserve existing canonical Notion drafts with
+`import-history --file private/prior-source-urls.json` (a JSON array of Telegram
+post permalinks). This prevents recreating previously drafted sources. The
+SQLite journal persists sources, drafts, exact approvals and attempt outcomes
+across runs. Similarity checking catches close text matches; it does not prove
+semantic uniqueness. Continue reviewing for repeated ideas.
+
+For an authorized destination account, copy `.env.example` privately and provide
+the model key and/or Threads OAuth token there. Never put tokens in chat or git.
+The model and publishing credentials are independent. Then:
+
+```bash
+python3 scripts/pipeline.py --env-file private/connection.env check-account
+python3 scripts/pipeline.py approve --id draft_ID --sha256 EXACT_SHA256 --account HANDLE --note 'Evidence, originality and voice reviewed' --score 85
+# Only within actual owner authorization, with ENABLE_LIVE_THREADS=1:
+python3 scripts/pipeline.py --env-file private/connection.env publish --id draft_ID
+# Read-only recovery after an uncertain attempt; never automatically re-sends:
+python3 scripts/pipeline.py --env-file private/connection.env reconcile --id draft_ID
+```
+
+Each approval is bound to the final text and account. Before sending, the script
+verifies `/me`, checks recent Threads text and the older owner publication ledger,
+and commits a durable attempt marker. Publication uses Meta's create/wait/publish
+flow, then checks exact text and a real HTTPS permalink. Unknown outcomes block
+retries until reconciliation. Use one publisher/runtime for a given account;
+the local SQLite queue is not synchronized across machines or the older Actions
+workflow. Installing the skill or running `collect` does not create a background
+service. Keep `private/` backed up securely for durable operation.
+
+Official API reference: [Threads publishing](https://developers.facebook.com/documentation/threads/posts).
+
 ## Purpose
 
 Create original founder-led Russian Threads content around go-to-market, market research, B2B sales, product discovery, AI, startup building and international expansion, supported by traceable evidence. Source ideas from GTMBE's own publicly authorized material, selected public Telegram channels, venture funds, practitioner publications and social discussions. Optimize for qualified interest in GTMBE, not content volume.

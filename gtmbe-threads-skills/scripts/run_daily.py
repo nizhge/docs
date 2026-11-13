@@ -66,7 +66,7 @@ def main() -> int:
     report = {"run_at": run_at, "mode": "OFFLINE_TEST" if is_fixture else "DRAFT_ONLY", "sources_attempted": len(sources),
               "candidates_found": len(candidates), "candidates_eligible": len(fresh), "excluded_posts": len(excluded),
               "research_briefs": len(briefs), "review_required_drafts": len(drafts),
-              "posts_published": 0, "voice_verified": bool(voice.strip()), "model_enabled": bool(api_key) and not is_fixture,
+              "posts_published": 0, "voice_verified": False, "voice_profile_supplied": bool(voice.strip()), "model_enabled": bool(api_key) and not is_fixture,
               "source_errors": errors, "generation_errors": generation_errors}
     write_json(output / "report.json", report)
     report_text = f"# GTMBE Threads daily research\n\nRun: {run_at}\nMode: {report['mode']}\n\n"

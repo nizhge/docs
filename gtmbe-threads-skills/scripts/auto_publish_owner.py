@@ -139,14 +139,49 @@ def already_on_threads(text: str, token: str, getter=get_json) -> dict | None:
     return None
 
 
+def load_review_queue(path: Path | None) -> tuple[list[dict], int]:
+    """Only owner-approved text with exact digest can leave the review queue."""
+    if path is None or not path.exists():
+        return [], 0
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload.get("items"), list):
+        raise ValueError("Invalid owner review queue")
+    approved, pending = [], 0
+    for item in payload["items"]:
+        if item.get("ownership") != "OWNER" or not re.fullmatch(
+                r"https://t\\.me/gtmbe/\\d+", str(item.get("source_url", ""))):
+            raise ValueError("Queue includes a non-owner or malformed source URL")
+        if item.get("status") != "APPROVED" or item.get("approved_by_owner") is not True:
+            pending += 1
+            continue
+        text = str(item.get("text", ""))
+        if not 120 <= len(text) <= 500 or text_digest(text) != item.get("text_sha256"):
+            raise ValueError("Approved queue post digest or character count mismatch")
+        approved.append({
+            "source_url": item["source_url"],
+            "source_post_id": item["source_url"].rsplit("/", 1)[-1],
+            "published_at": item.get("source_date", "unknown"),
+            "text": text,
+            "text_sha256": text_digest(text),
+            "origin": "OWNER_EDIT_APPROVED",
+            "char_count": len(text),
+        })
+    return approved, pending
+
+
 def do_run(html: str, state_path: Path, live: bool, *, token="", user_id="",
            username="", max_age_days=7, getter=get_json, sender=publish,
-           committer=None, today=None) -> dict:
-    candidates = select_eligible(html, today=today, max_age_days=max_age_days)
+           committer=None, today=None, queue_path=None) -> dict:
+    reviewed, pending_review = load_review_queue(queue_path)
+    direct = select_eligible(html, today=today, max_age_days=max_age_days)
+    # Approved edits outrank auto-verbatim candidates with the same source.
+    candidates = list({p["source_url"]: p for p in (direct + reviewed)}.values())
+    candidates.sort(key=lambda p: (p["origin"] == "OWNER_EDIT_APPROVED", p["published_at"]), reverse=True)
     state = load_state(state_path)
     remaining = [p for p in candidates if p["source_url"] not in state["entries"]]
     result = {"mode": "LIVE" if live else "PREVIEW", "fetched": len(parse_telegram(html, SOURCE_NAME, max_items=50)),
               "eligible_owner_posts": len(candidates), "new_eligible": len(remaining),
+              "approved_queue_posts": len(reviewed), "pending_review_posts": pending_review,
               "posted": 0, "status": "NO_ELIGIBLE_POST", "selected": None}
     if not remaining:
         return result
@@ -199,6 +234,7 @@ def main():
     parser.add_argument("--publish", action="store_true", help="Requires opt-in and Threads OAuth secrets")
     parser.add_argument("--state", type=Path, default=STATE_DEFAULT)
     parser.add_argument("--max-age-days", type=int, default=7)
+    parser.add_argument("--queue", type=Path, default=ROOT / "queue" / "owner_reviews.json")
     parser.add_argument("--fixture", type=Path, help="Local HTML fixture (preview/tests only)")
     args = parser.parse_args()
     if args.publish and args.fixture:
@@ -215,6 +251,7 @@ def main():
         username=os.getenv("THREADS_USERNAME", ""),
         max_age_days=args.max_age_days,
         committer=github_commit_state if args.publish else None,
+        queue_path=args.queue,
     )
     print(json.dumps(result, ensure_ascii=False))
     return 0

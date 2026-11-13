@@ -65,6 +65,19 @@ service. Keep `private/` backed up securely for durable operation.
 
 Official API reference: [Threads publishing](https://developers.facebook.com/documentation/threads/posts).
 
+An interactive browser operator can use the same queue without an API token.
+First verify the signed-in Threads profile, inspect the feed for duplicates,
+and prepare the approved post. In authorized live mode, run
+`begin-browser-publish --id draft_ID --account HANDLE --verified-profile-url https://www.threads.com/@HANDLE`
+immediately before clicking Publish. This records a durable attempt and blocks
+both browser and API retries. After opening the actual live post, save its
+observed full text and real URL as a private JSON object with `text` and
+`permalink`; use `confirm-browser-publish --id draft_ID --readback-file private/readback.json`.
+The confirmation checks exact text and account. If the outcome is uncertain,
+leave the attempt marker and use read-only UI inspection to find the existing
+post. Do not click Publish again. These commands track a real UI operator;
+they do not automate the browser or turn a login into a headless API service.
+
 ## Purpose
 
 Create original founder-led Russian Threads content around go-to-market, market research, B2B sales, product discovery, AI, startup building and international expansion, supported by traceable evidence. Source ideas from GTMBE's own publicly authorized material, selected public Telegram channels, venture funds, practitioner publications and social discussions. Optimize for qualified interest in GTMBE, not content volume.

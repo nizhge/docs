@@ -160,6 +160,60 @@ def verify_receipt(post, row, account):
         raise ValueError("Readback text or media ID mismatch")
 
 
+def browser_attempt(db, draft_id, account, verified_profile_url):
+    """Write ahead before an authorized operator clicks Publish in the browser.
+
+    The operator must verify the currently signed-in profile in the actual UI.
+    This function never logs in, clicks or publishes by itself.
+    """
+    from urllib.parse import urlparse
+    account = account.lstrip("@").casefold()
+    row = db.execute("SELECT * FROM drafts WHERE id=?", (draft_id,)).fetchone()
+    if not row or row["status"] != "APPROVED" or row["account"] != account:
+        raise ValueError("No unused approval for this draft/account")
+    if digest(row["text"]) != row["approved_sha256"] or row["text_sha256"] != row["approved_sha256"]:
+        raise ValueError("Approved text changed")
+    url = urlparse(verified_profile_url)
+    if url.scheme != "https" or url.hostname not in {"threads.com", "www.threads.com", "threads.net", "www.threads.net"} or url.path.rstrip("/").casefold() != "/@" + account:
+        raise ValueError("Browser profile does not match the approved account")
+    legacy = ROOT / "state" / "owner_publications.json"
+    if legacy.exists() and row["source_url"] in json.loads(legacy.read_text())["entries"]:
+        raise ValueError("Source already attempted by the owner-only publisher")
+    with db:
+        db.execute("UPDATE drafts SET status='BROWSER_ATTEMPT_STARTED' WHERE id=?", (draft_id,))
+        event(db, draft_id, "BROWSER_ATTEMPT_STARTED", {"account": account, "profile_url": verified_profile_url,
+                                                      "sha256": row["text_sha256"]})
+    return {"id": draft_id, "status": "BROWSER_ATTEMPT_STARTED", "account": account,
+            "text": row["text"], "text_sha256": row["text_sha256"]}
+
+
+def browser_readback(db, draft_id, readback):
+    """Record exact visible post text and permalink collected from browser UI.
+
+    Used for the first confirmation or read-only reconciliation. Never resets a
+    failed/uncertain attempt and never sends a post.
+    """
+    from urllib.parse import urlparse
+    row = db.execute("SELECT * FROM drafts WHERE id=?", (draft_id,)).fetchone()
+    if not row or row["status"] not in {"BROWSER_ATTEMPT_STARTED", "UNKNOWN_REQUIRES_RECONCILIATION"}:
+        raise ValueError("No unresolved browser publishing attempt")
+    url = urlparse(str(readback.get("permalink", "")))
+    pattern = r"/@" + re.escape(row["account"]) + r"/post/([A-Za-z0-9_-]+)/?"
+    match = re.fullmatch(pattern, url.path, re.I)
+    if url.scheme != "https" or url.hostname not in {"threads.com", "www.threads.com", "threads.net", "www.threads.net"} or not match:
+        raise ValueError("Browser readback lacks an exact-account Threads post permalink")
+    if readback.get("text") != row["text"] or digest(row["text"]) != row["approved_sha256"]:
+        raise ValueError("Browser readback text does not match approved text")
+    receipt = {"status": "PUBLISHED_VERIFIED", "provider": "threads_browser",
+               "post_id": match.group(1), "permalink": url._replace(query="", fragment="").geturl(),
+               "verified_at": utcnow(), "text_sha256": row["text_sha256"]}
+    with db:
+        db.execute("UPDATE drafts SET status=?,receipt=? WHERE id=?",
+                   (receipt["status"], json.dumps(receipt), draft_id))
+        event(db, draft_id, "BROWSER_READBACK_VERIFIED", receipt)
+    return receipt
+
+
 def send(db, draft_id, account, token, user_id="", sender=publish,
          verifier=verify_identity, finder=already_on_threads, receipts_path=None):
     row = db.execute("SELECT * FROM drafts WHERE id=?", (draft_id,)).fetchone()
@@ -263,6 +317,13 @@ def main():
     for command in ("publish", "reconcile"):
         cmd = sub.add_parser(command)
         cmd.add_argument("--id", required=True)
+    browser_begin = sub.add_parser("begin-browser-publish", help="After UI identity/duplicate checks, reserve an approved post before clicking Publish")
+    browser_begin.add_argument("--id", required=True)
+    browser_begin.add_argument("--account", required=True)
+    browser_begin.add_argument("--verified-profile-url", required=True)
+    browser_confirm = sub.add_parser("confirm-browser-publish", help="Record verified browser readback; never sends")
+    browser_confirm.add_argument("--id", required=True)
+    browser_confirm.add_argument("--readback-file", type=Path, required=True)
     sub.add_parser("check-account")
     sub.add_parser("status")
     export = sub.add_parser("export")
@@ -334,6 +395,12 @@ def main():
         elif args.command == "reconcile":
             verify_identity(token, uid, username)
             result = reconcile(db, args.id, token)
+        elif args.command == "begin-browser-publish":
+            if os.getenv("ENABLE_LIVE_THREADS") != "1":
+                raise ValueError("Browser publishing requires authorized live mode: ENABLE_LIVE_THREADS=1")
+            result = browser_attempt(db, args.id, args.account, args.verified_profile_url)
+        elif args.command == "confirm-browser-publish":
+            result = browser_readback(db, args.id, json.loads(args.readback_file.read_text()))
         elif args.command == "export":
             records = []
             for row in db.execute("SELECT * FROM drafts ORDER BY created_at"):

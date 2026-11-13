@@ -6,7 +6,8 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
-from pipeline import connect, store_sources, add_draft, approve, send, reconcile, digest, load_voice
+from pipeline import (connect, store_sources, add_draft, approve, send, reconcile,
+                      digest, load_voice, browser_attempt, browser_readback)
 from engine import draft_prompt, threads_length
 from publish_threads import publish
 
@@ -110,6 +111,38 @@ class EditorialPipelineTests(unittest.TestCase):
         path.write_text(json.dumps({"status": "CORPUS_REVIEWED", "sample_urls": ["https://t.me/kyrillic/1"] * 8}))
         with self.assertRaisesRegex(ValueError, "owner"):
             load_voice(path)
+
+    def test_browser_attempt_is_durable_and_prevents_double_send(self):
+        self.approve()
+        with self.assertRaisesRegex(ValueError, "profile"):
+            browser_attempt(self.db, self.draft["id"], "founder", "https://www.threads.com/@wrong")
+        result = browser_attempt(self.db, self.draft["id"], "founder", "https://www.threads.com/@founder")
+        self.assertEqual(result["text"], self.text)
+        self.db.close()
+        self.db = connect(self.path)
+        self.assertEqual(self.db.execute("SELECT status FROM drafts").fetchone()[0], "BROWSER_ATTEMPT_STARTED")
+        with self.assertRaisesRegex(ValueError, "unused approval"):
+            browser_attempt(self.db, self.draft["id"], "founder", "https://www.threads.com/@founder")
+        with self.assertRaises(ValueError):
+            self.send(lambda *args: self.fail("browser attempt cannot be resent through API"))
+
+    def test_browser_confirmation_requires_exact_text_and_account(self):
+        self.approve()
+        browser_attempt(self.db, self.draft["id"], "founder", "https://www.threads.com/@founder")
+        for readback in [
+            {"text": self.text, "permalink": "https://www.threads.com/@wrong/post/abc"},
+            {"text": self.text + " changed", "permalink": "https://www.threads.com/@founder/post/abc"},
+            {"text": self.text, "permalink": "http://www.threads.com/@founder/post/abc"},
+        ]:
+            with self.assertRaises(ValueError):
+                browser_readback(self.db, self.draft["id"], readback)
+        self.assertEqual(self.db.execute("SELECT status FROM drafts").fetchone()[0], "BROWSER_ATTEMPT_STARTED")
+        receipt = browser_readback(self.db, self.draft["id"], {"text": self.text,
+                                    "permalink": "https://www.threads.com/@founder/post/Abc_123?x=1"})
+        self.assertEqual(receipt["provider"], "threads_browser")
+        self.assertEqual(receipt["permalink"], "https://www.threads.com/@founder/post/Abc_123")
+        with self.assertRaises(ValueError):
+            browser_readback(self.db, self.draft["id"], {"text": self.text, "permalink":receipt["permalink"]})
 
 
 if __name__ == "__main__":

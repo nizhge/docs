@@ -1,0 +1,62 @@
+name: GTMBE Threads Owner Publishing (opt-in)
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Preview owner Telegram candidates or publish one eligible owner post
+        required: true
+        type: choice
+        options:
+          - preview
+          - publish
+        default: preview
+  schedule:
+    # Daily at 09:47 Moscow (UTC+3). Live publishing is OFF until opted in.
+    - cron: '47 6 * * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: gtmbe-threads-owner-publishing
+  cancel-in-progress: false
+
+jobs:
+  owner-threads:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: true
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run preview or authorized post
+        env:
+          GTMBE_AUTO_PUBLISH: ${{ vars.GTMBE_AUTO_PUBLISH }}
+          THREADS_USERNAME: ${{ vars.THREADS_USERNAME }}
+          THREADS_USER_ID: ${{ secrets.THREADS_USER_ID }}
+          THREADS_ACCESS_TOKEN: ${{ secrets.THREADS_ACCESS_TOKEN }}
+          GH_EVENT_NAME: ${{ github.event_name }}
+          GH_SELECTED_ACTION: ${{ inputs.action }}
+        run: |
+          set -euo pipefail
+          script="gtmbe-threads-skills/scripts/auto_publish_owner.py"
+          if [[ "$GH_EVENT_NAME" == "workflow_dispatch" && "$GH_SELECTED_ACTION" == "preview" ]]; then
+            python "$script"
+            exit 0
+          fi
+          if [[ "$GTMBE_AUTO_PUBLISH" != "true" ]]; then
+            echo "Live Threads publishing not enabled. Set repository variable GTMBE_AUTO_PUBLISH=true after account authorization."
+            python "$script"
+            exit 0
+          fi
+          if [[ -z "$THREADS_USERNAME" || -z "$THREADS_USER_ID" || -z "$THREADS_ACCESS_TOKEN" ]]; then
+            echo "::error::Threads credentials missing. Set THREADS_USERNAME (Actions variable) plus THREADS_USER_ID and THREADS_ACCESS_TOKEN (Actions secrets)."
+            exit 1
+          fi
+          python "$script" --publish

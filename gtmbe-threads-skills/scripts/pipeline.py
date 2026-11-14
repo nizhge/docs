@@ -195,8 +195,10 @@ def browser_readback(db, draft_id, readback):
     """
     from urllib.parse import urlparse
     row = db.execute("SELECT * FROM drafts WHERE id=?", (draft_id,)).fetchone()
-    if not row or row["status"] not in {"BROWSER_ATTEMPT_STARTED", "UNKNOWN_REQUIRES_RECONCILIATION"}:
+    if not row or row["status"] not in {"BROWSER_ATTEMPT_STARTED", "UNKNOWN_REQUIRES_RECONCILIATION",
+                                         "PUBLORA_PUBLISHED_REQUIRES_READBACK"}:
         raise ValueError("No unresolved browser publishing attempt")
+    saved = json.loads(row["receipt"] or "{}")
     url = urlparse(str(readback.get("permalink", "")))
     pattern = r"/@" + re.escape(row["account"]) + r"/post/([A-Za-z0-9_-]+)/?"
     match = re.fullmatch(pattern, url.path, re.I)
@@ -204,8 +206,14 @@ def browser_readback(db, draft_id, readback):
         raise ValueError("Browser readback lacks an exact-account Threads post permalink")
     if readback.get("text") != row["text"] or digest(row["text"]) != row["approved_sha256"]:
         raise ValueError("Browser readback text does not match approved text")
-    receipt = {"status": "PUBLISHED_VERIFIED", "provider": "threads_browser",
-               "post_id": match.group(1), "permalink": url._replace(query="", fragment="").geturl(),
+    if saved.get("provider") == "publora" and saved.get("permalink"):
+        known = urlparse(saved["permalink"])
+        if known.path.rstrip("/") != url.path.rstrip("/"):
+            raise ValueError("Browser readback differs from the Publora post permalink")
+    receipt = {**saved, "status": "PUBLISHED_VERIFIED", "provider": saved.get("provider", "threads_browser"),
+               "post_id": saved.get("post_id") or match.group(1), "post_code": match.group(1),
+               "permalink": url._replace(query="", fragment="").geturl(),
+               "readback_method": "threads_browser", "publication_verified": True,
                "verified_at": utcnow(), "text_sha256": row["text_sha256"]}
     with db:
         db.execute("UPDATE drafts SET status=?,receipt=? WHERE id=?",
@@ -264,6 +272,8 @@ def reconcile(db, draft_id, token, reader=_read_post, finder=already_on_threads)
     if not row or row["status"] in {"REVIEW_REQUIRED", "APPROVED", "PUBLISHED_VERIFIED"}:
         raise ValueError("Only an unresolved publication attempt can be reconciled")
     saved = json.loads(row["receipt"] or "{}")
+    if saved.get("provider") == "publora":
+        raise ValueError("Publora attempts require Publora reconciliation")
     post_id = saved.get("post_id")
     if not post_id:
         existing = finder(row["text"], token)
@@ -277,6 +287,92 @@ def reconcile(db, draft_id, token, reader=_read_post, finder=already_on_threads)
         db.execute("UPDATE drafts SET status=?,receipt=? WHERE id=?",
                    (receipt["status"], json.dumps(receipt), draft_id))
         event(db, draft_id, "RECONCILED", receipt)
+    return receipt
+
+
+def send_publora(db, draft_id, account, key, platform_id, client=None, verifier=None):
+    """Submit one approved post, with durable identity binding and no send retries."""
+    from publora_connection import verify_connection
+    from publish_publora import PubloraClient, idempotency_key
+    account = account.lstrip("@").casefold()
+    row = db.execute("SELECT * FROM drafts WHERE id=?", (draft_id,)).fetchone()
+    if not row or row["status"] != "APPROVED" or row["account"] != account:
+        raise ValueError("No unused approval for this exact draft/account")
+    if digest(row["text"]) != row["approved_sha256"] or row["text_sha256"] != row["approved_sha256"]:
+        raise ValueError("Approved text changed")
+    if not re.fullmatch(r"threads-\d+", platform_id):
+        raise ValueError("A fixed Publora Threads platform ID is required")
+    identity = (verifier or verify_connection)(key, account, platform_id)
+    if identity.get("username") != account or identity.get("platform_id") != platform_id:
+        raise ValueError("Publora identity does not match the approved destination")
+    legacy = ROOT / "state" / "owner_publications.json"
+    if legacy.exists() and row["source_url"] in json.loads(legacy.read_text())["entries"]:
+        raise ValueError("Source already attempted by the owner-only publisher")
+    client = client or PubloraClient(key)
+    existing = client.find_duplicate(row["text"], platform_id)
+    receipt = {"provider": "publora", "status": "PUBLORA_ATTEMPT_STARTED", "account": account,
+               "platform_id": platform_id, "text_sha256": row["text_sha256"],
+               "idempotency_key": idempotency_key(draft_id, row["text_sha256"], platform_id),
+               "publication_verified": False}
+    if existing:
+        receipt.update(status="PUBLORA_EXISTING_REQUIRES_RECONCILIATION", post_group_id=existing)
+    # FULL synchronous commit happens before the only outbound write below.
+    with db:
+        db.execute("UPDATE drafts SET status=?,receipt=? WHERE id=?",
+                   (receipt["status"], json.dumps(receipt), draft_id))
+        event(db, draft_id, receipt["status"], receipt)
+    if existing:
+        return receipt
+    try:
+        group_id = client.create_post(row["text"], platform_id, receipt["idempotency_key"])
+        if not isinstance(group_id, str) or not re.fullmatch(r"[a-fA-F0-9]{24}", group_id):
+            raise ValueError("Invalid Publora post group ID")
+        receipt.update(status="PUBLORA_PENDING", post_group_id=group_id)
+        with db:
+            db.execute("UPDATE drafts SET status=?,receipt=? WHERE id=?",
+                       (receipt["status"], json.dumps(receipt), draft_id))
+            event(db, draft_id, receipt["status"], receipt)
+    except Exception as exc:
+        receipt["status"] = "UNKNOWN_REQUIRES_RECONCILIATION"
+        with db:
+            db.execute("UPDATE drafts SET status=?,receipt=? WHERE id=?",
+                       (receipt["status"], json.dumps(receipt), draft_id))
+            event(db, draft_id, receipt["status"], {"provider": "publora", "error_type": type(exc).__name__})
+        raise ValueError("Publora publication outcome is uncertain; reconcile without sending again") from None
+    return receipt
+
+
+def reconcile_publora(db, draft_id, key, account, platform_id, client=None):
+    """Only GET requests; a provider publication remains unverified until live readback."""
+    from publish_publora import PubloraClient, post_report
+    row = db.execute("SELECT * FROM drafts WHERE id=?", (draft_id,)).fetchone()
+    if not row or row["status"] in {"REVIEW_REQUIRED", "APPROVED", "PUBLISHED_VERIFIED"}:
+        raise ValueError("Only an unresolved Publora attempt can be reconciled")
+    saved = json.loads(row["receipt"] or "{}")
+    account = account.lstrip("@").casefold()
+    if (saved.get("provider") != "publora" or saved.get("platform_id") != platform_id
+            or saved.get("account") != account or row["account"] != account
+            or saved.get("text_sha256") != digest(row["text"]) or row["approved_sha256"] != digest(row["text"])):
+        raise ValueError("Publora attempt binding differs from the configured account or text")
+    # Reconnection may be needed for sending, but a stored failed/revoked channel
+    # must still allow read-only reconciliation of a past attempt with the same key.
+    client = client or PubloraClient(key)
+    group_id = saved.get("post_group_id")
+    if not group_id:
+        group_id = client.find_duplicate(row["text"], platform_id)
+    if not group_id:
+        return {**saved, "detail": "No matching Publora group found; no retry performed"}
+    if not saved.get("post_group_id"):
+        saved["post_group_id"] = group_id
+        with db:
+            db.execute("UPDATE drafts SET receipt=? WHERE id=?", (json.dumps(saved), draft_id))
+            event(db, draft_id, "PUBLORA_GROUP_FOUND", {"post_group_id": group_id})
+    report = post_report(client.get_post(group_id), group_id, platform_id, account, row["text"])
+    receipt = {**saved, **report, "checked_at": utcnow()}
+    with db:
+        db.execute("UPDATE drafts SET status=?,receipt=? WHERE id=?",
+                   (receipt["status"], json.dumps(receipt), draft_id))
+        event(db, draft_id, "PUBLORA_STATUS_CHECKED", receipt)
     return receipt
 
 
@@ -336,6 +432,11 @@ def main():
     token = os.getenv("THREADS_ACCESS_TOKEN", "")
     username = os.getenv("THREADS_USERNAME", "")
     uid = os.getenv("THREADS_USER_ID", "")
+    provider = os.getenv("PUBLISH_PROVIDER", "meta")
+    if provider not in {"meta", "publora"}:
+        raise ValueError("PUBLISH_PROVIDER must be meta or publora")
+    publora_key = os.getenv("PUBLORA_API_KEY", "")
+    platform_id = os.getenv("THREADS_PLATFORM_ID", "")
     with exclusive(args.db):
         db = connect(args.db)
         result = {}
@@ -385,16 +486,34 @@ def main():
             approve(db, args.id, args.sha256, args.account, args.note, args.score)
             result = {"id": args.id, "status": "APPROVED", "published": 0}
         elif args.command == "check-account":
-            if not token:
-                raise ValueError("THREADS_ACCESS_TOKEN missing")
-            result = verify_identity(token, uid, username)
+            if provider == "publora":
+                from publora_connection import verify_connection
+                if not publora_key or not platform_id:
+                    raise ValueError("Connect the intended Publora Threads channel first")
+                result = verify_connection(publora_key, username, platform_id)
+            else:
+                if not token:
+                    raise ValueError("THREADS_ACCESS_TOKEN missing")
+                result = verify_identity(token, uid, username)
         elif args.command == "publish":
-            if os.getenv("ENABLE_LIVE_THREADS") != "1" or not token or not username:
-                raise ValueError("Live publishing requires ENABLE_LIVE_THREADS=1 and the authorized Threads token/username")
-            result = send(db, args.id, username, token, uid, receipts_path=args.db.parent / "pipeline_receipts.json")
+            if os.getenv("ENABLE_LIVE_THREADS") != "1" or not username:
+                raise ValueError("Live publishing requires ENABLE_LIVE_THREADS=1 and the authorized username")
+            if provider == "publora":
+                result = send_publora(db, args.id, username, publora_key, platform_id)
+            else:
+                if not token:
+                    raise ValueError("THREADS_ACCESS_TOKEN missing")
+                result = send(db, args.id, username, token, uid, receipts_path=args.db.parent / "pipeline_receipts.json")
         elif args.command == "reconcile":
-            verify_identity(token, uid, username)
-            result = reconcile(db, args.id, token)
+            row = db.execute("SELECT receipt FROM drafts WHERE id=?", (args.id,)).fetchone()
+            attempt_provider = json.loads(row["receipt"] or "{}").get("provider") if row else None
+            if attempt_provider == "publora":
+                result = reconcile_publora(db, args.id, publora_key, username, platform_id)
+            else:
+                if provider == "publora":
+                    raise ValueError("This attempt was not made through Publora; use its original connection")
+                verify_identity(token, uid, username)
+                result = reconcile(db, args.id, token)
         elif args.command == "begin-browser-publish":
             if os.getenv("ENABLE_LIVE_THREADS") != "1":
                 raise ValueError("Browser publishing requires authorized live mode: ENABLE_LIVE_THREADS=1")
@@ -416,6 +535,9 @@ def main():
                       "queue": dict(db.execute("SELECT status,count(*) FROM drafts GROUP BY status")),
                       "voice_profile_present": (ROOT / "private/voice_profile.json").exists(),
                       "model_key_configured": bool(os.getenv("OPENAI_API_KEY")),
+                      "publish_provider": os.getenv("PUBLISH_PROVIDER", "meta"),
+                      "publora_key_configured": bool(os.getenv("PUBLORA_API_KEY")),
+                      "publora_platform_configured": bool(os.getenv("THREADS_PLATFORM_ID")),
                       "threads_token_configured": bool(token), "threads_username_configured": bool(username),
                       "live_enabled": os.getenv("ENABLE_LIVE_THREADS") == "1"}
         db.close()

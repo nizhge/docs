@@ -110,6 +110,7 @@ def save_connection(token, expected_username, env_path=ENV_PATH, metadata_path=M
     settings.update(THREADS_USERNAME=identity["username"], THREADS_USER_ID=identity["id"],
                     THREADS_ACCESS_TOKEN=token)
     if not refresh:
+        settings["PUBLISH_PROVIDER"] = "meta"
         settings["ENABLE_LIVE_THREADS"] = "0"
     metadata = {"status": "IDENTITY_VERIFIED_PUBLISH_NOT_TESTED", "account": identity,
                 "token_updated_at": now.isoformat(),

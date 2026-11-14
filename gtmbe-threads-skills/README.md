@@ -7,7 +7,7 @@ Independent GTMBE adaptation inspired by [sergebulaev/threads-skills](https://gi
 ## Persistent Telegram → voice → Threads route
 
 `scripts/pipeline.py` joins source intake, the owner voice prompt, editorial drafts,
-account-specific approval, and the Meta publisher in one local SQLite queue. This
+account-specific approval, and the selected Meta or Publora publisher in one local SQLite queue. This
 route supports original commentary from external channels such as `@kyrillic` as
 well as minimally edited owner text. It does not activate the older owner-only
 GitHub publisher or claim an account is connected.
@@ -42,7 +42,7 @@ across runs. Similarity checking catches close text matches; it does not prove
 semantic uniqueness. Continue reviewing for repeated ideas.
 
 For an authorized destination account, copy `.env.example` privately and provide
-the model key and/or Threads OAuth token there. Never put tokens in chat or git.
+the model key and the selected publishing connection there. Never put keys or tokens in chat or git.
 The model and publishing credentials are independent. Then:
 
 ```bash
@@ -55,15 +55,64 @@ python3 scripts/pipeline.py --env-file private/connection.env reconcile --id dra
 ```
 
 Each approval is bound to the final text and account. Before sending, the script
-verifies `/me`, checks recent Threads text and the older owner publication ledger,
-and commits a durable attempt marker. Publication uses Meta's create/wait/publish
-flow, then checks exact text and a real HTTPS permalink. Unknown outcomes block
-retries until reconciliation. Use one publisher/runtime for a given account;
+verifies the selected provider's account binding and commits a durable attempt
+marker. Both paths honor the older owner publication ledger. Direct Meta also
+checks recent Threads text and uses Meta's create/wait/publish flow with exact
+text readback. Publora checks its own history and reports its asynchronous
+delivery separately from actual Threads readback. Unknown outcomes block all
+send routes; reconciliation only reads. Use one publisher/runtime for a given account;
 the local SQLite queue is not synchronized across machines or the older Actions
 workflow. Installing the skill or running `collect` does not create a background
 service. Keep `private/` backed up securely for durable operation.
 
 Official API reference: [Threads publishing](https://developers.facebook.com/documentation/threads/posts).
+
+### Publora connection and publishing
+
+The owner selected **Publora** on 14 November 2026. Complete its Threads OAuth
+for `@gtmberu` under [Channels](https://app.publora.com/dashboard/accounts).
+A Publora login alone does not connect Threads, and Publora still requires Meta
+authorization. If Meta restricts a new sign-in, stop retries; try the already
+working phone session only if the owner can complete that authorization there.
+
+After permission to store/use the account's API key, connect it through a masked
+prompt or a mode-600 `--key-file`. Do not paste the key into chat or command arguments:
+
+```bash
+python3 scripts/publora_connection.py connect --username gtmberu
+python3 scripts/publora_connection.py status
+python3 scripts/publora_connection.py check
+```
+
+The helper checks `GET /platform-connections` for exactly one active Threads
+channel with the intended username and fixed `threads-<id>` binding. It saves
+`PUBLISH_PROVIDER=publora`, the private key and channel ID while leaving live
+publishing off. This listing is Publora's cached verdict, not a live Meta
+permission or publication test. Existing settings remain untouched if validation
+fails. API credentials can access the Publora account; the local pipeline limits
+each request to the exact approved Threads destination.
+
+With a reviewed approval and authorized live mode, the same `publish --id`
+command uses `publishNow: true`, a single text target and a stable idempotency
+key. It records the attempt before its only POST and the returned `postGroupId`
+before any later read. The initial `PUBLORA_PENDING` receipt is not publication.
+Use `reconcile --id` for read-only status checks; it never submits or retries.
+Publora history checks cover posts made through that account, not posts created
+directly in Threads. A match already in Publora blocks a new submission.
+
+`PUBLORA_PUBLISHED_REQUIRES_READBACK` means Publora reports success. Its stored
+content is not independent live text verification. Open the actual Threads post,
+read its visible full text, save the observed `text` and `permalink` privately,
+and use `confirm-browser-publish --id draft_ID --readback-file private/readback.json`.
+Only matching text, the intended account and the reported post permalink permit
+`PUBLISHED_VERIFIED`. Pending, failed, draft and uncertain receipts all block
+re-submission, including attempts through Meta or the browser. Initial setup
+never sends a test post or approves existing drafts.
+
+Official contracts: [connections](https://docs.publora.com/endpoints/platform-connections),
+[create post](https://docs.publora.com/endpoints/create-post),
+[get post](https://docs.publora.com/endpoints/get-post),
+[list posts](https://docs.publora.com/endpoints/list-posts).
 
 ### Private Meta token connection
 

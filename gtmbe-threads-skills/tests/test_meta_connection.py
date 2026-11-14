@@ -22,11 +22,13 @@ class MetaConnectionTests(unittest.TestCase):
         self.temp.cleanup()
 
     def test_connect_saves_privately_only_after_identity_check(self):
+        self.env.write_text(self.env.read_text() + "PUBLISH_PROVIDER=publora\n")
         result = save_connection("test_token_value", "gtmberu", self.env, self.meta, verifier=self.verify)
         settings = read_settings(self.env)
         self.assertEqual(settings["THREADS_ACCESS_TOKEN"], "test_token_value")
         self.assertEqual(settings["OPENAI_API_KEY"], "preserved_model_key")
         self.assertEqual(settings["ENABLE_LIVE_THREADS"], "0")
+        self.assertEqual(settings["PUBLISH_PROVIDER"], "meta")
         self.assertEqual(self.env.stat().st_mode & 0o777, 0o600)
         self.assertEqual(self.meta.stat().st_mode & 0o777, 0o600)
         self.assertNotIn("test_token_value", json.dumps(result))

@@ -9,11 +9,13 @@ from datetime import datetime, timezone
 from hashlib import sha256
 import json
 import os
+import time
 from pathlib import Path
 from urllib.parse import urlencode, urlparse
 from urllib.request import Request, urlopen
+from engine import threads_length
 
-BASE = "https://graph.threads.net/v1.0"
+BASE = "https://graph.threads.com/v1.0"
 
 
 def write_atomic(path: Path, content: dict):
@@ -33,7 +35,7 @@ def fetch_approved(drafts_file: Path, approval_file: Path, draft_id: str) -> dic
         raise ValueError("Only reviewed source-backed drafts may enter this publisher")
     text = draft.get("text", "")
     expected = sha256(text.encode("utf-8")).hexdigest()
-    if not 30 <= len(text) <= 500 or expected != draft.get("text_sha256"):
+    if not 30 <= threads_length(text) <= 500 or expected != draft.get("text_sha256"):
         raise ValueError("Draft text changed or is outside standard length limits")
     approvals = json.loads(approval_file.read_text(encoding="utf-8"))
     if approvals.get(draft_id) != expected:
@@ -62,6 +64,8 @@ def publish(draft: dict, receipts_file: Path, user_id: str, token: str,
         raise ValueError("THREADS_USER_ID must be numeric")
     if not token:
         raise ValueError("THREADS_ACCESS_TOKEN is missing")
+    if not 30 <= threads_length(draft.get("text", "")) <= 500:
+        raise ValueError("Post must contain 30–500 Threads characters")
     receipts = json.loads(receipts_file.read_text(encoding="utf-8")) if receipts_file.exists() else {}
     draft_id = draft["id"]
     if draft_id in receipts:
@@ -74,6 +78,10 @@ def publish(draft: dict, receipts_file: Path, user_id: str, token: str,
         container_id = container["id"]
         receipts[draft_id] = {"status": "CONTAINER_CREATED", "container_id": container_id}
         write_atomic(receipts_file, receipts)
+        # Meta advises waiting for processing before calling threads_publish.
+        # Dependency-injected test posters remain entirely offline.
+        if poster is _post:
+            time.sleep(30)
         result = poster(f"{BASE}/{user_id}/threads_publish", {"creation_id": container_id}, token)
         media_id = result["id"]
         receipts[draft_id] = {"status": "API_CONFIRMED_LINK_PENDING", "container_id": container_id,
@@ -85,9 +93,9 @@ def publish(draft: dict, receipts_file: Path, user_id: str, token: str,
             host = urlparse(permalink).hostname
             if str(post.get("id")) != str(media_id):
                 raise ValueError("Readback media ID mismatch")
-            if host not in {"threads.com", "www.threads.com", "threads.net", "www.threads.net"}:
+            if urlparse(permalink).scheme != "https" or host not in {"threads.com", "www.threads.com", "threads.net", "www.threads.net"} or "/post/" not in urlparse(permalink).path:
                 raise ValueError("No verified Threads permalink")
-            if post.get("text") is not None and post["text"].strip() != draft["text"].strip():
+            if post.get("text") != draft["text"]:
                 raise ValueError("Readback text differs from approved draft")
             receipts[draft_id]["status"] = "PUBLISHED_VERIFIED"
             receipts[draft_id]["permalink"] = permalink

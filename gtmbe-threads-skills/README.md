@@ -65,6 +65,36 @@ service. Keep `private/` backed up securely for durable operation.
 
 Official API reference: [Threads publishing](https://developers.facebook.com/documentation/threads/posts).
 
+### Private Meta token connection
+
+`scripts/meta_connection.py` accepts a Threads user access token through a masked
+terminal prompt or a private input file. It checks `/me` against the intended
+username before saving it to `private/connection.env` with mode 600. The `connect`
+command leaves live publishing disabled and does not create a post. Identity
+verification is recorded separately from publishing-permission verification.
+
+```bash
+python3 scripts/meta_connection.py connect --username gtmberu
+# For a short-lived user token, optionally exchange it with the Threads app secret:
+python3 scripts/meta_connection.py connect --username gtmberu --exchange
+python3 scripts/meta_connection.py status
+python3 scripts/pipeline.py --env-file private/connection.env check-account
+# For an eligible long-lived token, at least 24 hours old and still valid:
+python3 scripts/meta_connection.py refresh
+```
+
+Never put a token or app secret in command-line arguments or chat. A token input
+file can be supplied with `--token-file private/incoming-token.txt` and must have
+mode 600. Use a Threads-enabled Meta app and request only `threads_basic` and
+`threads_content_publish` for this posting workflow. The Threads-specific app ID
+and secret differ from the regular Facebook app credentials. Account OAuth
+authorization is still required; this helper does not bypass sign-in restrictions
+or grant permissions. Complete that authorization on an already working session.
+Meta's [official sample and Postman collection](https://github.com/fbsamples/threads_api)
+describe the app and token flow. Token exchange/refresh endpoints are taken from
+that collection. Failed identity or token validation does not overwrite the
+existing credentials. Credentials and metadata remain excluded from git.
+
 An interactive browser operator can use the same queue without an API token.
 First verify the signed-in Threads profile, inspect the feed for duplicates,
 and prepare the approved post. In authorized live mode, run

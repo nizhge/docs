@@ -98,6 +98,16 @@ class ResearchTests(unittest.TestCase):
         self.assertGreaterEqual(len(sources), 6)
         self.assertTrue(all(s["url"].startswith("https://") for s in sources))
 
+    def test_telegram_retains_evidence_links_and_excludes_late_ad_disclosure(self):
+        text = 'Полезный разбор продукта и продаж. ' * 40
+        html = ('<div class="tgme_widget_message" data-post="channel/123">'
+                '<div class="tgme_widget_message_text">' + text +
+                '<a href="https://example.com/research">исследование</a>'
+                ' Реклама. erid: test</div></div>')
+        item = parse_telegram(html, "Channel")[0]
+        self.assertEqual(item["source_links"], ["https://example.com/research"])
+        self.assertEqual(exclusion_reason(item), "promotion_event_or_job_listing")
+
 
 class PublisherTests(unittest.TestCase):
     def test_exact_sha_approval_required(self):
@@ -152,7 +162,7 @@ class PublisherTests(unittest.TestCase):
     def test_uncertain_publish_is_blocked_on_retry(self):
         with tempfile.TemporaryDirectory() as tmp:
             receipts = Path(tmp) / "receipts.json"
-            post = {"id": "draft_unknown", "text": "Some post"}
+            post = {"id": "draft_unknown", "text": "A source-backed post whose network outcome can remain uncertain."}
             def fail(url, form, token):
                 raise TimeoutError("network disconnected")
             with self.assertRaises(TimeoutError):

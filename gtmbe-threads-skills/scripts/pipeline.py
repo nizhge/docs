@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import argparse
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from difflib import SequenceMatcher
 import fcntl
 from hashlib import sha256
@@ -101,6 +101,54 @@ def load_voice(path):
     return json.dumps(profile, ensure_ascii=False)
 
 
+def source_hash(item):
+    evidence = {k: item.get(k) for k in ("url", "title", "body_text", "summary", "published_at", "source_links")}
+    return digest(json.dumps(evidence, ensure_ascii=False, sort_keys=True))
+
+
+def source_gate(item, max_age_days=7, now=None):
+    """Check news age at use time, not just when the source entered the database."""
+    if not 0 < max_age_days <= 365:
+        raise ValueError("News age must be greater than zero and at most 365 days")
+    reason = exclusion_reason(item)
+    if reason:
+        return reason
+    raw = item.get("published_at")
+    if not isinstance(raw, str):
+        return "source_date_missing"
+    try:
+        date = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        if date.tzinfo is None:
+            date = date.replace(tzinfo=timezone.utc)
+    except ValueError:
+        return "source_date_invalid"
+    now = now or datetime.now(timezone.utc)
+    if date > now:
+        return "source_date_in_future"
+    if date < now - timedelta(days=max_age_days):
+        return "source_too_old"
+    if item.get("relevance_score", 0) < 37:
+        return "source_not_relevant"
+    return None
+
+
+def generation_candidates(db, max_age_days=7, now=None, current_urls=None):
+    rows = db.execute("SELECT payload FROM sources WHERE url NOT IN (SELECT source_url FROM drafts) AND url NOT IN (SELECT source_url FROM history)")
+    items, excluded = [], {}
+    for row in rows:
+        item = json.loads(row[0])
+        reason = source_gate(item, max_age_days, now)
+        if current_urls is not None and item["url"] not in current_urls:
+            reason = reason or "not_fetched_this_run"
+        if reason:
+            excluded[reason] = excluded.get(reason, 0) + 1
+        else:
+            items.append(item)
+    # Newest news first. Relevance breaks ties within the same publication time.
+    items.sort(key=lambda x: (x["published_at"], x.get("relevance_score", 0)), reverse=True)
+    return items, excluded
+
+
 def add_draft(db, item, draft):
     text = draft.get("text", "").strip()
     reason = validate_draft(text, item)
@@ -122,6 +170,7 @@ def add_draft(db, item, draft):
     draft_id = "draft_" + item["id"]
     payload = dict(draft, id=draft_id, source_url=item["url"], source_id=item["id"],
                    text=text, text_sha256=digest(text), status="REVIEW_REQUIRED",
+                   source_sha256=source_hash(item),
                    ownership="OWNER" if is_owned_telegram(item) else "THIRD_PARTY",
                    source_date=item.get("published_at"), char_count=len(text),
                    platform_count=threads_length(text), published=False)
@@ -400,6 +449,7 @@ def main():
     generate = sub.add_parser("generate")
     generate.add_argument("--voice", type=Path, default=ROOT / "private/voice_profile.json")
     generate.add_argument("--limit", type=int, default=3)
+    generate.add_argument("--max-age-days", type=float, default=7)
     imp = sub.add_parser("import-drafts")
     imp.add_argument("--file", type=Path, required=True)
     history = sub.add_parser("import-history")
@@ -453,20 +503,17 @@ def main():
             if not key:
                 raise ValueError("OPENAI_API_KEY missing. Import reviewed drafts or connect the model before automatic generation")
             created, errors = [], []
-            rows = db.execute("SELECT payload FROM sources WHERE url NOT IN (SELECT source_url FROM drafts) AND url NOT IN (SELECT source_url FROM history)").fetchall()
-            items = sorted((json.loads(r[0]) for r in rows), key=lambda x: x.get("relevance_score", 0), reverse=True)
+            items, excluded = generation_candidates(db, args.max_age_days)
             for item in items:
                 if len(created) >= min(max(args.limit, 0), 10):
                     break
-                if exclusion_reason(item) or item.get("relevance_score", 0) < 37:
-                    continue
                 try:
                     draft = generate_draft(item, key, os.getenv("OPENAI_MODEL", "gpt-4.1-mini"), voice)
                     draft["voice_sha256"] = digest(voice)
                     created.append(add_draft(db, item, draft)["id"])
                 except Exception as exc:
                     errors.append({"url": item["url"], "error_type": type(exc).__name__})
-            result = {"created": created, "errors": errors, "published": 0}
+            result = {"created": created, "errors": errors, "excluded": excluded, "published": 0}
         elif args.command == "import-drafts":
             created = []
             for draft in json.loads(args.file.read_text()):

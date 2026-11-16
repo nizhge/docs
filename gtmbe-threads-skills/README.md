@@ -41,6 +41,41 @@ SQLite journal persists sources, drafts, exact approvals and attempt outcomes
 across runs. Similarity checking catches close text matches; it does not prove
 semantic uniqueness. Continue reviewing for repeated ideas.
 
+### Run the whole news cycle
+
+```bash
+python3 scripts/run_flow.py --limit 3 --max-age-days 7
+# After exact draft approvals and the owner's authorized live-mode choice:
+python3 scripts/run_flow.py --limit 0 --publish-approved --publish-limit 1
+```
+
+The first command collects the configured channels, selects recent unused
+sources, drafts with the saved owner profile when the model key is configured,
+and exports `private/review.html` plus `private/review.json`. The HTML page is a
+local, readable review copy; it has no credentials and no publishing controls.
+`private/flow_report.json` and journal events record each run's actual outcome.
+These are one-shot commands, not an installed recurring service.
+
+Without a model connection, `private/generation_requests.json` contains private
+source/voice prompts for the current agent session. It creates no placeholder
+drafts and reports `AUTOMATIC_GENERATION_MODEL_NOT_CONNECTED`. An interactive
+agent may write actual reviewed drafts and import them with `import-drafts`;
+that does not constitute unattended model generation.
+
+News freshness is checked when selecting sources and immediately before sending,
+including records retained from earlier collection runs. Missing, invalid,
+future or older-than-seven-day dates are excluded by default. Failed collection
+does not silently substitute cached posts. A source edit after drafting requires
+another review; the exact source snapshot hash is bound to new drafts. Explicit
+evergreen work can use a wider `--max-age-days` within the owner's scope.
+
+The publish step uses only existing exact-account approvals, requires live mode
+and the selected provider's credentials, and makes at most one new submission by
+default. It first reconciles existing unresolved attempts with reads only. An
+unresolved result prevents a new submission until actual readback is recorded.
+Provider acceptance is never counted as a verified live publication. Review and
+source collection continue while the Threads connection is incomplete.
+
 For an authorized destination account, copy `.env.example` privately and provide
 the model key and the selected publishing connection there. Never put keys or tokens in chat or git.
 The model and publishing credentials are independent. Then:

@@ -4,6 +4,194 @@
 
 Independent GTMBE adaptation inspired by [sergebulaev/threads-skills](https://github.com/sergebulaev/threads-skills) (MIT). Based on its eight specialized tasks, with five added GTMBE workflows. This is **not** a modified upstream GitHub repository, production deployment, or connected social account. No posts were published.
 
+## Persistent Telegram → voice → Threads route
+
+`scripts/pipeline.py` joins source intake, the owner voice prompt, editorial drafts,
+account-specific approval, and the selected Meta or Publora publisher in one local SQLite queue. This
+route supports original commentary from external channels such as `@kyrillic` as
+well as minimally edited owner text. It does not activate the older owner-only
+GitHub publisher or claim an account is connected.
+
+```bash
+cd gtmbe-threads-skills
+python3 scripts/pipeline.py status
+python3 scripts/pipeline.py collect
+python3 scripts/pipeline.py --env-file private/connection.env generate --limit 3
+python3 scripts/pipeline.py export
+```
+
+The collector defaults to the previously confirmed owner channel `@gtmbe` plus
+the configured external sources. `private/voice_profile.json` must contain
+`status: CORPUS_REVIEWED` and at least eight distinct owner sample permalinks in
+`sample_urls`, plus the actual style instructions/examples. A smaller curated
+corpus may be provisional; profile presence does not imply owner approval. No
+third-party text belongs in that style corpus. The target remains 30–100 samples.
+
+Without a model key, collect sources and write drafts in an interactive agent
+session. Import a JSON array of drafts with `source_url`, `text`, `angle`,
+`original_contribution` and `verification_notes` using
+`import-drafts --file private/drafts.json`. Sources must already be collected.
+The new route refuses generic voice fallback. Draft generation always requires
+review; automatic tests and source snippets are not fact verification.
+
+Reserve existing canonical Notion drafts with
+`import-history --file private/prior-source-urls.json` (a JSON array of Telegram
+post permalinks). This prevents recreating previously drafted sources. The
+SQLite journal persists sources, drafts, exact approvals and attempt outcomes
+across runs. Similarity checking catches close text matches; it does not prove
+semantic uniqueness. Continue reviewing for repeated ideas.
+
+### Run the whole news cycle
+
+```bash
+python3 scripts/run_flow.py --limit 3 --max-age-days 7
+# After exact draft approvals and the owner's authorized live-mode choice:
+python3 scripts/run_flow.py --limit 0 --publish-approved --publish-limit 1
+```
+
+The first command collects the configured channels, selects recent unused
+sources, drafts with the saved owner profile when the model key is configured,
+and exports `private/review.html` plus `private/review.json`. The HTML page is a
+local, readable review copy; it has no credentials and no publishing controls.
+`private/flow_report.json` and journal events record each run's actual outcome.
+These are one-shot commands, not an installed recurring service.
+
+Without a model connection, `private/generation_requests.json` contains private
+source/voice prompts for the current agent session. It creates no placeholder
+drafts and reports `AUTOMATIC_GENERATION_MODEL_NOT_CONNECTED`. An interactive
+agent may write actual reviewed drafts and import them with `import-drafts`;
+that does not constitute unattended model generation.
+
+News freshness is checked when selecting sources and immediately before sending,
+including records retained from earlier collection runs. Missing, invalid,
+future or older-than-seven-day dates are excluded by default. Failed collection
+does not silently substitute cached posts. A source edit after drafting requires
+another review; the exact source snapshot hash is bound to new drafts. Explicit
+evergreen work can use a wider `--max-age-days` within the owner's scope.
+
+The publish step uses only existing exact-account approvals, requires live mode
+and the selected provider's credentials, and makes at most one new submission by
+default. It first reconciles existing unresolved attempts with reads only. An
+unresolved result prevents a new submission until actual readback is recorded.
+Provider acceptance is never counted as a verified live publication. Review and
+source collection continue while the Threads connection is incomplete.
+
+For an authorized destination account, copy `.env.example` privately and provide
+the model key and the selected publishing connection there. Never put keys or tokens in chat or git.
+The model and publishing credentials are independent. Then:
+
+```bash
+python3 scripts/pipeline.py --env-file private/connection.env check-account
+python3 scripts/pipeline.py approve --id draft_ID --sha256 EXACT_SHA256 --account HANDLE --note 'Evidence, originality and voice reviewed' --score 85
+# Only within actual owner authorization, with ENABLE_LIVE_THREADS=1:
+python3 scripts/pipeline.py --env-file private/connection.env publish --id draft_ID
+# Read-only recovery after an uncertain attempt; never automatically re-sends:
+python3 scripts/pipeline.py --env-file private/connection.env reconcile --id draft_ID
+```
+
+Each approval is bound to the final text and account. Before sending, the script
+verifies the selected provider's account binding and commits a durable attempt
+marker. Both paths honor the older owner publication ledger. Direct Meta also
+checks recent Threads text and uses Meta's create/wait/publish flow with exact
+text readback. Publora checks its own history and reports its asynchronous
+delivery separately from actual Threads readback. Unknown outcomes block all
+send routes; reconciliation only reads. Use one publisher/runtime for a given account;
+the local SQLite queue is not synchronized across machines or the older Actions
+workflow. Installing the skill or running `collect` does not create a background
+service. Keep `private/` backed up securely for durable operation.
+
+Official API reference: [Threads publishing](https://developers.facebook.com/documentation/threads/posts).
+
+### Publora connection and publishing
+
+The owner selected **Publora** on 14 November 2026. Complete its Threads OAuth
+for `@gtmberu` under [Channels](https://app.publora.com/dashboard/accounts).
+A Publora login alone does not connect Threads, and Publora still requires Meta
+authorization. If Meta restricts a new sign-in, stop retries; try the already
+working phone session only if the owner can complete that authorization there.
+
+After permission to store/use the account's API key, connect it through a masked
+prompt or a mode-600 `--key-file`. Do not paste the key into chat or command arguments:
+
+```bash
+python3 scripts/publora_connection.py connect --username gtmberu
+python3 scripts/publora_connection.py status
+python3 scripts/publora_connection.py check
+```
+
+The helper checks `GET /platform-connections` for exactly one active Threads
+channel with the intended username and fixed `threads-<id>` binding. It saves
+`PUBLISH_PROVIDER=publora`, the private key and channel ID while leaving live
+publishing off. This listing is Publora's cached verdict, not a live Meta
+permission or publication test. Existing settings remain untouched if validation
+fails. API credentials can access the Publora account; the local pipeline limits
+each request to the exact approved Threads destination.
+
+With a reviewed approval and authorized live mode, the same `publish --id`
+command uses `publishNow: true`, a single text target and a stable idempotency
+key. It records the attempt before its only POST and the returned `postGroupId`
+before any later read. The initial `PUBLORA_PENDING` receipt is not publication.
+Use `reconcile --id` for read-only status checks; it never submits or retries.
+Publora history checks cover posts made through that account, not posts created
+directly in Threads. A match already in Publora blocks a new submission.
+
+`PUBLORA_PUBLISHED_REQUIRES_READBACK` means Publora reports success. Its stored
+content is not independent live text verification. Open the actual Threads post,
+read its visible full text, save the observed `text` and `permalink` privately,
+and use `confirm-browser-publish --id draft_ID --readback-file private/readback.json`.
+Only matching text, the intended account and the reported post permalink permit
+`PUBLISHED_VERIFIED`. Pending, failed, draft and uncertain receipts all block
+re-submission, including attempts through Meta or the browser. Initial setup
+never sends a test post or approves existing drafts.
+
+Official contracts: [connections](https://docs.publora.com/endpoints/platform-connections),
+[create post](https://docs.publora.com/endpoints/create-post),
+[get post](https://docs.publora.com/endpoints/get-post),
+[list posts](https://docs.publora.com/endpoints/list-posts).
+
+### Private Meta token connection
+
+`scripts/meta_connection.py` accepts a Threads user access token through a masked
+terminal prompt or a private input file. It checks `/me` against the intended
+username before saving it to `private/connection.env` with mode 600. The `connect`
+command leaves live publishing disabled and does not create a post. Identity
+verification is recorded separately from publishing-permission verification.
+
+```bash
+python3 scripts/meta_connection.py connect --username gtmberu
+# For a short-lived user token, optionally exchange it with the Threads app secret:
+python3 scripts/meta_connection.py connect --username gtmberu --exchange
+python3 scripts/meta_connection.py status
+python3 scripts/pipeline.py --env-file private/connection.env check-account
+# For an eligible long-lived token, at least 24 hours old and still valid:
+python3 scripts/meta_connection.py refresh
+```
+
+Never put a token or app secret in command-line arguments or chat. A token input
+file can be supplied with `--token-file private/incoming-token.txt` and must have
+mode 600. Use a Threads-enabled Meta app and request only `threads_basic` and
+`threads_content_publish` for this posting workflow. The Threads-specific app ID
+and secret differ from the regular Facebook app credentials. Account OAuth
+authorization is still required; this helper does not bypass sign-in restrictions
+or grant permissions. Complete that authorization on an already working session.
+Meta's [official sample and Postman collection](https://github.com/fbsamples/threads_api)
+describe the app and token flow. Token exchange/refresh endpoints are taken from
+that collection. Failed identity or token validation does not overwrite the
+existing credentials. Credentials and metadata remain excluded from git.
+
+An interactive browser operator can use the same queue without an API token.
+First verify the signed-in Threads profile, inspect the feed for duplicates,
+and prepare the approved post. In authorized live mode, run
+`begin-browser-publish --id draft_ID --account HANDLE --verified-profile-url https://www.threads.com/@HANDLE`
+immediately before clicking Publish. This records a durable attempt and blocks
+both browser and API retries. After opening the actual live post, save its
+observed full text and real URL as a private JSON object with `text` and
+`permalink`; use `confirm-browser-publish --id draft_ID --readback-file private/readback.json`.
+The confirmation checks exact text and account. If the outcome is uncertain,
+leave the attempt marker and use read-only UI inspection to find the existing
+post. Do not click Publish again. These commands track a real UI operator;
+they do not automate the browser or turn a login into a headless API service.
+
 ## Purpose
 
 Create original founder-led Russian Threads content around go-to-market, market research, B2B sales, product discovery, AI, startup building and international expansion, supported by traceable evidence. Source ideas from GTMBE's own publicly authorized material, selected public Telegram channels, venture funds, practitioner publications and social discussions. Optimize for qualified interest in GTMBE, not content volume.

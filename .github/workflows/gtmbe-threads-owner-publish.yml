@@ -9,11 +9,12 @@ on:
   workflow_dispatch:
     inputs:
       action:
-        description: Preview owner Telegram candidates or publish one eligible owner post
+        description: Preview candidates, safely check Threads authorization, or publish an eligible post
         required: true
         type: choice
         options:
           - preview
+          - check_auth
           - publish
         default: preview
   schedule:
@@ -40,7 +41,15 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Check Threads authorization (read-only)
+        if: github.event_name == 'workflow_dispatch' && inputs.action == 'check_auth'
+        env:
+          THREADS_USERNAME: ${{ vars.THREADS_USERNAME }}
+          THREADS_USER_ID: ${{ secrets.THREADS_USER_ID }}
+          THREADS_ACCESS_TOKEN: ${{ secrets.THREADS_ACCESS_TOKEN }}
+        run: python gtmbe-threads-skills/scripts/check_threads_auth.py
       - name: Run preview or authorized post
+        if: github.event_name != 'workflow_dispatch' || inputs.action != 'check_auth'
         env:
           GTMBE_AUTO_PUBLISH: ${{ vars.GTMBE_AUTO_PUBLISH }}
           THREADS_USERNAME: ${{ vars.THREADS_USERNAME }}
